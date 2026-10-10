@@ -7,7 +7,16 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <future>
+#include <string>
+#include <fcntl.h>
+#ifdef _WIN32
+#include <io.h>
+#include <sys/stat.h>
+#else
+#include <unistd.h>
+#endif
 #include <stdexcept>
 #include <thread>
 
@@ -251,6 +260,66 @@ static void CheckUnspecifiedIpv6() {
     Require(sceNetSocketClose(receiver) == 0);
 }
 
+static void AddDescriptor(std::uint64_t* set, int descriptor) {
+    set[descriptor / 64] |= std::uint64_t{1} << (descriptor % 64);
+}
+
+static bool HasDescriptor(const std::uint64_t* set, int descriptor) {
+    return ((set[descriptor / 64] >> (descriptor % 64)) & 1u) != 0;
+}
+
+static int OpenHostFile(const std::filesystem::path& path) {
+#ifdef _WIN32
+    return ::_wopen(path.c_str(), _O_RDWR | _O_CREAT | _O_TRUNC | _O_BINARY, _S_IREAD | _S_IWRITE);
+#else
+    return ::open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0600);
+#endif
+}
+
+static int CloseHostFile(int descriptor) {
+#ifdef _WIN32
+    return ::_close(descriptor);
+#else
+    return ::close(descriptor);
+#endif
+}
+
+static void CheckSelectFiles(int idleSocket) {
+    const auto path = std::filesystem::temp_directory_path()
+        / ("guest_sce_net_select_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".tmp");
+    const int file = OpenHostFile(path);
+    Require(file >= 0 && file < 1024 && file != idleSocket);
+    const int nfds = std::max(file, idleSocket) + 1;
+    const std::int64_t pollNow[2]{0, 0};
+    std::uint64_t readable[16]{};
+    std::uint64_t writable[16]{};
+    std::uint64_t exceptional[16]{};
+    AddDescriptor(readable, file);
+    AddDescriptor(writable, file);
+    AddDescriptor(exceptional, file);
+    Require(select_nid_postfix(nfds, readable, writable, exceptional, pollNow) == 2);
+    Require(HasDescriptor(readable, file) && HasDescriptor(writable, file) && !HasDescriptor(exceptional, file));
+    std::uint64_t mixed[16]{};
+    AddDescriptor(mixed, file);
+    AddDescriptor(mixed, idleSocket);
+    Require(select_nid_postfix(nfds, mixed, nullptr, nullptr, nullptr) == 1);
+    Require(HasDescriptor(mixed, file) && !HasDescriptor(mixed, idleSocket));
+    std::uint64_t idle[16]{};
+    AddDescriptor(idle, idleSocket);
+    const std::int64_t shortWait[2]{0, 200000};
+    const auto start = std::chrono::steady_clock::now();
+    Require(select_nid_postfix(nfds, idle, nullptr, nullptr, shortWait) == 0);
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+    Require(elapsed >= std::chrono::milliseconds(200) && elapsed < std::chrono::seconds(5) && !HasDescriptor(idle, idleSocket));
+    Require(CloseHostFile(file) == 0);
+    std::uint64_t closed[16]{};
+    AddDescriptor(closed, file);
+    *__error_nid_postfix() = 0;
+    Require(select_nid_postfix(nfds, closed, nullptr, nullptr, pollNow) == -1 && *__error_nid_postfix() == 9);
+    Require(HasDescriptor(closed, file));
+    std::filesystem::remove(path);
+}
+
 int main() {
     for (int i = 0; i < 16; ++i) {
         Require(in6addr_any_nid_postfix[i] == 0);
@@ -368,6 +437,7 @@ int main() {
     const std::int64_t bad_timeout[2]{0, 1000000};
     Require(select_nid_postfix(udp_receiver + 1, readable, nullptr, nullptr, bad_timeout) == -1 && *__error_nid_postfix() == 22);
     Require(select_nid_postfix(1025, nullptr, nullptr, nullptr, poll_now) == -1 && *__error_nid_postfix() == 22);
+    CheckSelectFiles(udp_receiver);
     CheckMessages(udp_receiver, udp_sender, address);
     Require(sceNetSocketClose(udp_sender) == 0);
     Require(sceNetSocketClose(udp_receiver) == 0);
