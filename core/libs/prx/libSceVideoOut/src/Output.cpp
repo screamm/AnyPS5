@@ -15,6 +15,14 @@
 static constexpr std::uint32_t VIDEO_OUT_OUTPUT_OPTIONS_FIRST_WORD = 0x00FF0000;
 static constexpr std::size_t VIDEO_OUT_OUTPUT_OPTIONS_FREE_WORD = 3;
 
+static VideoOutOutputStatus describeOutputStatus(const VideoOutConfig& cfg) {
+    VideoOutOutputStatus status{};
+    status.resolution = (cfg.width >= 3840 || cfg.height >= 2160) ? 2u : 1u;
+    status.dynamicRange = 1;
+    status.refreshRate = (cfg.outputMode == VIDEO_OUT_OUTPUT_MODE_119_88HZ) ? VIDEO_OUT_REFRESH_RATE_119_88HZ : VIDEO_OUT_REFRESH_RATE_59_94HZ;
+    return status;
+}
+
 static int validateOutputConfig(int handle, uint64_t mode, const VideoOutOutputOptions* options, void* reservedPtr, uint64_t reserved) {
     if (!VideoOutDriver::Get().HasConfig(handle) || !VideoOutDriver::Get().IsOpen(handle)) return VIDEO_OUT_ERROR_INVALID_HANDLE;
     if (reservedPtr != nullptr || reserved != 0) return VIDEO_OUT_ERROR_INVALID_VALUE;
@@ -153,13 +161,23 @@ int APS5_VABI sceVideoOutGetOutputStatus(int handle, VideoOutOutputStatus* statu
     }
     std::unique_lock lock(cfg->mutex);
     cfg->Check();
-    status->resolution = (cfg->width >= 3840 || cfg->height >= 2160) ? 2u : 1u;
-    status->dynamicRange = 1;
-    status->refreshRate = (cfg->outputMode == VIDEO_OUT_OUTPUT_MODE_119_88HZ) ? VIDEO_OUT_REFRESH_RATE_119_88HZ : VIDEO_OUT_REFRESH_RATE_59_94HZ;
-    status->flags = 0;
-    status->reserved[0] = 0;
-    status->reserved[1] = 0;
-    status->reserved[2] = 0;
+    *status = describeOutputStatus(*cfg);
+    return 0;
+} catch (const ProcessShutdown&) {
+    LibcAwaitExit_nid_postfix();
+}
+
+int APS5_VABI sceVideoOutGetOutputStatusWithVrr(int handle, void* status) try {
+    if (status == nullptr) return VIDEO_OUT_ERROR_INVALID_ADDRESS;
+    if (!VideoOutDriver::Get().HasConfig(handle)) return VIDEO_OUT_ERROR_INVALID_HANDLE;
+    auto cfg = VideoOutDriver::Get().GetConfig(handle);
+    VideoOutOutputStatusWithVrr result{};
+    {
+        std::unique_lock lock(cfg->mutex);
+        cfg->Check();
+        result.status = describeOutputStatus(*cfg);
+    }
+    std::memcpy(status, &result, sizeof(result));
     return 0;
 } catch (const ProcessShutdown&) {
     LibcAwaitExit_nid_postfix();

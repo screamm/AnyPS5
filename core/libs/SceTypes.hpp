@@ -1876,6 +1876,13 @@ struct VideoOutOutputStatus {
     std::uint64_t reserved[3] = {};
 };
 
+struct VideoOutOutputStatusWithVrr {
+    VideoOutOutputStatus status;
+    std::uint8_t queryResult[6] = {};
+    std::uint8_t reserved[26] = {};
+};
+static_assert(sizeof(VideoOutOutputStatusWithVrr) == 80 && offsetof(VideoOutOutputStatusWithVrr, queryResult) == 48);
+
 struct VideoOutResolutionStatus {
     std::uint32_t fullWidth = 0;
     std::uint32_t fullHeight = 0;
