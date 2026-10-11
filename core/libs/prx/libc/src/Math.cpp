@@ -379,6 +379,96 @@ int ReducePiOverTwo(long double x, long double* y) {
     return n;
 }
 
+constexpr short DenormalClass = -2, FiniteClass = -1, ZeroClass = 0, InfiniteClass = 1, NanClass = 2;
+
+short ClassifyExtended(long double value) {
+    const ExtendedParts parts = SplitExtended(value);
+    const int exponent = parts.signExponent & 0x7fff;
+    if (exponent == 0x7fff) return (parts.mantissa << 1) == 0 ? InfiniteClass : NanClass;
+    if (exponent == 0 && parts.mantissa == 0) return ZeroClass;
+    return (parts.mantissa >> 63) != 0 ? FiniteClass : DenormalClass;
+}
+
+short ScaleExtended(long double& value, long long exponent) {
+    const ExtendedParts parts = SplitExtended(value);
+    const std::uint16_t sign = parts.signExponent & 0x8000;
+    if ((parts.signExponent & 0x7fff) == 0x7fff) return (parts.mantissa << 1) == 0 ? InfiniteClass : NanClass;
+    long long biased = std::max(parts.signExponent & 0x7fff, 1);
+    const int shift = std::countl_zero(parts.mantissa);
+    const std::uint64_t mantissa = parts.mantissa << shift;
+    biased += exponent - shift;
+    if (biased >= 0x7fff) {
+        value = JoinExtended(1ull << 63, sign | 0x7fff);
+        return InfiniteClass;
+    }
+    if (biased > 0) {
+        value = JoinExtended(mantissa, static_cast<std::uint16_t>(sign | biased));
+        return FiniteClass;
+    }
+    const long long rightShift = 1 - biased;
+    if (rightShift >= 65) {
+        value = JoinExtended(0, sign);
+        return ZeroClass;
+    }
+    std::uint64_t kept = rightShift == 64 ? 0 : mantissa >> rightShift;
+    const std::uint64_t lost = rightShift == 64 ? mantissa : mantissa << (64 - rightShift);
+    bool roundUp = false;
+    switch (std::fegetround()) {
+    case FE_UPWARD: roundUp = lost != 0 && sign == 0; break;
+    case FE_DOWNWARD: roundUp = lost != 0 && sign != 0; break;
+    case FE_TOWARDZERO: break;
+    default: roundUp = lost > 1ull << 63 || (lost == 1ull << 63 && (kept & 1) != 0); break;
+    }
+    if (roundUp) ++kept;
+    value = JoinExtended(kept, static_cast<std::uint16_t>(sign | (kept >> 63)));
+    return kept == 0 ? ZeroClass : FiniteClass;
+}
+
+short FinishExpScale(long double& value, long long exponent) {
+    const short result = ScaleExtended(value, exponent);
+    if (result == InfiniteClass) RaiseLibcError(FE_OVERFLOW);
+    if (result == ZeroClass) RaiseLibcError(FE_UNDERFLOW);
+    return result;
+}
+
+short ExpScaled(long double& x, long long scale) {
+    constexpr long double inverseLn2 = 0xb.8aa3b295c17f0bcp-3L, ln2Low = -0xe.8e7bcd5e4f1d9ccp-35L, tiny = 0x1p-66L;
+    constexpr double ln2High = -0x1.62e42fecp-1;
+    constexpr long double p0 = 0xc.99bcb9bdeb30f49p-23L, p1 = 0xa.578826a9b3aafa0p-13L, p2 = 0xe.8b94728735d9363p-7L;
+    constexpr long double q0 = 0x8.45a5963c196b530p-17L, q1 = 0xf.83a71f722cba3c4p-10L;
+    if (x < -29490.0L) {
+        x = 0.0L;
+        return ZeroClass;
+    }
+    if (x > 29490.0L) {
+        x = std::numeric_limits<long double>::infinity();
+        RaiseLibcError(FE_OVERFLOW);
+        return InfiniteClass;
+    }
+    if (scale == 0 && x == 1.0L) {
+        x = 0xa.df85458a2bb4a9bp-2L;
+        return FiniteClass;
+    }
+    const long double g = x * inverseLn2;
+    if (std::isnan(g)) {
+        x = g;
+        return NanClass;
+    }
+    const long long n = static_cast<long long>(g + (g < 0.0L ? -0.5L : 0.5L));
+    const long double nn = static_cast<long double>(n);
+    x += nn * static_cast<long double>(ln2High);
+    x += nn * ln2Low;
+    if (x > -tiny && x < tiny) {
+        x = 1.0L;
+    } else {
+        const long double w = x * x;
+        const long double even = ((p0 * w + p1) * w + p2) * w;
+        const long double odd = x * ((q0 * w + q1) * w + 0.5L);
+        x = ((even + odd) + 1.0L) / ((even - odd) + 1.0L);
+    }
+    return FinishExpScale(x, n + scale);
+}
+
 constexpr double Exp2Table[] = {
     0x1.6a09e667f3bcdp-1, -0x1.bdd3413b2648p-55, 0x1.6c012750bdabfp-1, -0x1.2895667ff0cp-57,
     0x1.6dfb23c651a2fp-1, -0x1.bbe3a683c88p-58, 0x1.6ff7df9519484p-1, -0x1.83c0f25860fp-56,
@@ -634,6 +724,17 @@ long double APS5_VABI atanl_nid_postfix(long double x) {
     if (id < 0) return x - x * (s1 + s2);
     const long double result = AtanHigh[id] - ((x * (s1 + s2) - AtanLow[id]) - x);
     return negative ? -result : result;
+}
+
+long double APS5_VABI expl_nid_postfix(long double x) {
+    switch (ClassifyExtended(x)) {
+    case ZeroClass: return 1.0L;
+    case InfiniteClass: return std::signbit(x) ? 0.0L : x;
+    case NanClass: return x;
+    default:
+        ExpScaled(x, 0);
+        return x;
+    }
 }
 
 long double APS5_VABI exp2l_nid_postfix(long double x) {

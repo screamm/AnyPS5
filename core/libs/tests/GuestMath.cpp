@@ -35,6 +35,7 @@ long double APS5_VABI acosl_nid_postfix(long double);
 long double APS5_VABI atanl_nid_postfix(long double);
 long double APS5_VABI tanl_nid_postfix(long double);
 long double APS5_VABI exp2l_nid_postfix(long double);
+long double APS5_VABI expl_nid_postfix(long double);
 long double APS5_VABI frexpl_nid_postfix(long double, int*);
 struct LibcFloatConstant { std::uint32_t bits[4]; };
 extern LibcFloatConstant _FInf_nid_postfix;
@@ -283,6 +284,31 @@ static void CheckExp2l() {
     std::feclearexcept(FE_ALL_EXCEPT);
     Require(std::isinf(exp2l_nid_postfix(16384.0L)) && std::fetestexcept(FE_OVERFLOW) == 0);
     Require(exp2l_nid_postfix(-16446.0L) == 0.0L && std::fetestexcept(FE_UNDERFLOW) != 0);
+}
+
+static void CheckExpl() {
+    CheckExtendedCases("expl", expl_nid_postfix, {
+        {0, 0x0000, 0x8000000000000000ull, 0x3fff}, {0, 0x8000, 0x8000000000000000ull, 0x3fff}, {1, 0x0000, 0x8000000000000000ull, 0x3fff},
+        {0x8000000000000000ull, 0x3fb9, 0x8000000000000000ull, 0x3fff}, {0xbce5086492111aebull, 0x3fbc, 0x8000000000000000ull, 0x3fff},
+        {0x8000000000000000ull, 0x3ffe, 0xd3094c70f034de4dull, 0x3fff}, {0x8000000000000000ull, 0x3fff, 0xadf85458a2bb4a9bull, 0x4000},
+        {0x8000000000000000ull, 0xbfff, 0xbc5ab1b16779be36ull, 0x3ffd}, {0x8000000000000000ull, 0x4000, 0xec7325c6a6ed6e61ull, 0x4001},
+        {0xa000000000000000ull, 0x4002, 0xac14ee7ca82afcf8ull, 0x400d}, {0xa000000000000000ull, 0xc002, 0xbe6bcdab23e4d4e3ull, 0x3ff0},
+        {0xc800000000000000ull, 0x4005, 0x9a4a54d8b8dfa566ull, 0x408f}, {0xb172000000000000ull, 0x400c, 0xfa13dba329dd768dull, 0x7ffe},
+        {0xb16c000000000000ull, 0xc00c, 0x92cf78ab801959c4ull, 0x0001}, {0xe665000000000000ull, 0xc00d, 0, 0x0000},
+        {0x8000000000000000ull, 0x7fff, 0x8000000000000000ull, 0x7fff}, {0x8000000000000000ull, 0xffff, 0, 0x0000},
+        {0xc000000000000001ull, 0x7fff, 0xc000000000000001ull, 0x7fff}, {0x4000000000000000ull, 0x3fff, 0xc000000000000000ull, 0xffff},
+    });
+    const struct { long double input; bool overflow; } rangeErrors[] = {
+        {11357.0L, true}, {29490.0L, true}, {29490.5L, true}, {-11400.0L, false}, {-11500.0L, false}, {-29490.0L, false},
+    };
+    for (const auto& test : rangeErrors) {
+        std::feclearexcept(FE_ALL_EXCEPT);
+        *__error_nid_postfix() = 0;
+        const long double result = expl_nid_postfix(test.input);
+        Require(*__error_nid_postfix() == ERANGE && (test.overflow ? std::isinf(result) : result == 0.0L));
+        Require(std::fetestexcept(test.overflow ? FE_OVERFLOW : FE_UNDERFLOW) != 0);
+    }
+    *__error_nid_postfix() = 0;
 }
 
 static void CheckIntegerConversions() {
@@ -566,6 +592,7 @@ int main() {
     CheckAtanl();
     CheckTanl();
     CheckExp2l();
+    CheckExpl();
     Require(scalbn_nid_postfix(0.75, -2) == 0.1875);
     Require(scalbnf_nid_postfix(0.75f, 4) == 12.f);
     Require(nextafterf_nid_postfix(1.f, 2.f) == 0x1.000002p0f && nextafterf_nid_postfix(1.f, 0.f) == 0x1.fffffep-1f);
