@@ -32,6 +32,7 @@ int APS5_VABI abs_nid_postfix(int);
 double APS5_VABI trunc_nid_postfix(double);
 double APS5_VABI fma_nid_postfix(double, double, double);
 long double APS5_VABI acosl_nid_postfix(long double);
+long double APS5_VABI atanl_nid_postfix(long double);
 long double APS5_VABI frexpl_nid_postfix(long double, int*);
 struct LibcFloatConstant { std::uint32_t bits[4]; };
 extern LibcFloatConstant _FInf_nid_postfix;
@@ -198,6 +199,42 @@ static void CheckExactLibm() {
         Require(*__error_nid_postfix() == EDOM && std::fetestexcept(FE_INVALID) != 0);
     }
     *__error_nid_postfix() = 0;
+}
+
+struct ExtendedCase {
+    std::uint64_t inputMantissa;
+    std::uint16_t inputSignExponent;
+    std::uint64_t outputMantissa;
+    std::uint16_t outputSignExponent;
+};
+
+using ExtendedFunction = long double (APS5_VABI*)(long double);
+
+static void CheckExtendedCases(const char* name, ExtendedFunction function, std::initializer_list<ExtendedCase> cases) {
+    for (const auto& test : cases) {
+        *__error_nid_postfix() = 12345;
+        const long double result = function(MakeExtended(test.inputMantissa, test.inputSignExponent));
+        if (!ExtendedBits(result, test.outputMantissa, test.outputSignExponent) || *__error_nid_postfix() != 12345) {
+            std::fprintf(stderr, "Guest %s failed for %016llx:%04x\n", name, static_cast<unsigned long long>(test.inputMantissa), test.inputSignExponent);
+            std::abort();
+        }
+    }
+    *__error_nid_postfix() = 0;
+}
+
+static void CheckAtanl() {
+    CheckExtendedCases("atanl", atanl_nid_postfix, {
+        {0, 0x0000, 0, 0x0000}, {0, 0x8000, 0, 0x8000}, {1, 0x0000, 1, 0x0000},
+        {0x8000000000000000ull, 0x3fde, 0x8000000000000000ull, 0x3fde}, {0x8000000000000000ull, 0xbfd7, 0x8000000000000000ull, 0xbfd7},
+        {0x8000000000000000ull, 0x3ffd, 0xfadbafc96406eb15ull, 0x3ffc}, {0xe000000000000000ull, 0x3ffd, 0xd327761e611fe5b6ull, 0x3ffd},
+        {0x8000000000000000ull, 0xbffe, 0xed63382b0dda7b45ull, 0xbffd}, {0xb000000000000000ull, 0x3ffe, 0x9a2f80e671bdda20ull, 0x3ffe},
+        {0x8000000000000000ull, 0x3fff, 0xc90fdaa22168c235ull, 0x3ffe}, {0x9800000000000000ull, 0xbfff, 0xdef3876a1cff365dull, 0xbffe},
+        {0x8000000000000000ull, 0x4000, 0x8db70c975df22363ull, 0x3fff}, {0x9c00000000000000ull, 0x4000, 0x973ab94419d2a08cull, 0x3fff},
+        {0xa000000000000000ull, 0xc002, 0xbc4de960b0029c17ull, 0xbfff}, {0x9502f90000000000ull, 0x4020, 0xc90fdaa1ea6f0281ull, 0x3fff},
+        {0x8000000000000000ull, 0x403f, 0xc90fdaa22168c234ull, 0x3fff}, {0x8000000000000000ull, 0x4040, 0xc90fdaa22168c235ull, 0x3fff},
+        {0x8000000000000000ull, 0xc040, 0xc90fdaa22168c235ull, 0xbfff}, {0x8000000000000000ull, 0x7fff, 0xc90fdaa22168c235ull, 0x3fff},
+        {0x8000000000000000ull, 0xffff, 0xc90fdaa22168c235ull, 0xbfff}, {0xc000000000000001ull, 0x7fff, 0xc000000000000001ull, 0x7fff},
+    });
 }
 
 static void CheckIntegerConversions() {
@@ -478,6 +515,7 @@ int main() {
     CheckExactOperations();
     CheckLongDouble();
     CheckExactLibm();
+    CheckAtanl();
     Require(scalbn_nid_postfix(0.75, -2) == 0.1875);
     Require(scalbnf_nid_postfix(0.75f, 4) == 12.f);
     Require(nextafterf_nid_postfix(1.f, 2.f) == 0x1.000002p0f && nextafterf_nid_postfix(1.f, 0.f) == 0x1.fffffep-1f);

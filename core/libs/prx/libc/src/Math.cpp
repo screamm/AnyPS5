@@ -43,6 +43,41 @@ void RaiseLibcError(int exceptions) {
     errno = range ? ERANGE : EDOM;
 }
 
+static_assert(std::numeric_limits<long double>::digits == 64, "guest long double is the x87 80-bit format");
+
+struct ExtendedParts {
+    std::uint64_t mantissa;
+    std::uint16_t signExponent;
+};
+
+ExtendedParts SplitExtended(long double value) {
+    unsigned char bytes[sizeof(long double)];
+    std::memcpy(bytes, &value, sizeof(value));
+    ExtendedParts parts;
+    std::memcpy(&parts.mantissa, bytes, sizeof(parts.mantissa));
+    std::memcpy(&parts.signExponent, bytes + sizeof(parts.mantissa), sizeof(parts.signExponent));
+    return parts;
+}
+
+constexpr long double AtanHigh[] = {4.63647609000806116202e-01L, 7.85398163397448309628e-01L, 9.82793723247329067960e-01L, 1.57079632679489661926e+00L};
+constexpr long double AtanLow[] = {1.18469937025062860669e-20L, -1.25413940316708300586e-20L, 2.55232234165405176172e-20L, -2.50827880633416601173e-20L};
+constexpr long double AtanCoefficients[] = {
+    3.33333333333333333017e-01L, -1.99999999999999632011e-01L, 1.42857142857046531280e-01L, -1.11111111100562372733e-01L,
+    9.09090902935647302252e-02L, -7.69230552476207730353e-02L, 6.66661718042406260546e-02L, -5.88158892835030888692e-02L,
+    5.25499891539726639379e-02L, -4.70119845393155721494e-02L, 4.03539201366454414072e-02L, -2.91303858419364158725e-02L,
+    1.24822046299269234080e-02L,
+};
+
+long double AtanEven(long double x) {
+    const auto& t = AtanCoefficients;
+    return t[0] + x * (t[2] + x * (t[4] + x * (t[6] + x * (t[8] + x * (t[10] + x * t[12])))));
+}
+
+long double AtanOdd(long double x) {
+    const auto& t = AtanCoefficients;
+    return t[1] + x * (t[3] + x * (t[5] + x * (t[7] + x * (t[9] + x * t[11]))));
+}
+
 }
 
 extern "C" {
@@ -147,6 +182,46 @@ int APS5_VABI abs_nid_postfix(int x) { return x < 0 ? static_cast<int>(0u - stat
 double APS5_VABI trunc_nid_postfix(double x) { return std::trunc(x); }
 double APS5_VABI fma_nid_postfix(double x, double y, double z) { return std::fma(x, y, z); }
 long double APS5_VABI acosl_nid_postfix(long double x) { return std::acos(x); }
+
+long double APS5_VABI atanl_nid_postfix(long double x) {
+    const ExtendedParts parts = SplitExtended(x);
+    const bool negative = (parts.signExponent & 0x8000) != 0;
+    const int exponent = parts.signExponent & 0x7fff;
+    if (exponent >= 0x3fff + 65) {
+        if (exponent == 0x7fff && (parts.mantissa & 0x7fffffffffffffffull) != 0) return x + x;
+        return negative ? -AtanHigh[3] - AtanLow[3] : AtanHigh[3] + AtanLow[3];
+    }
+    const int exponentAndMantissa = (exponent << 8) | static_cast<int>((parts.mantissa >> 55) & 0xff);
+    int id;
+    if (exponentAndMantissa < ((0x3fff - 2) << 8) + 0xc0) {
+        if (exponent < 0x3fff - 32 && 1.0e300 + x > 1.0L) return x;
+        id = -1;
+    } else {
+        x = std::fabs(x);
+        if (exponentAndMantissa < (0x3fff << 8) + 0x30) {
+            if (exponentAndMantissa < ((0x3fff - 1) << 8) + 0x60) {
+                id = 0;
+                x = (2.0L * x - 1.0L) / (2.0L + x);
+            } else {
+                id = 1;
+                x = (x - 1.0L) / (x + 1.0L);
+            }
+        } else if (exponentAndMantissa < ((0x3fff + 1) << 8) + 0x38) {
+            id = 2;
+            x = (x - 1.5L) / (1.0L + 1.5L * x);
+        } else {
+            id = 3;
+            x = -1.0L / x;
+        }
+    }
+    const long double z = x * x;
+    const long double w = z * z;
+    const long double s1 = z * AtanEven(w);
+    const long double s2 = w * AtanOdd(w);
+    if (id < 0) return x - x * (s1 + s2);
+    const long double result = AtanHigh[id] - ((x * (s1 + s2) - AtanLow[id]) - x);
+    return negative ? -result : result;
+}
 
 long double APS5_VABI frexpl_nid_postfix(long double x, int* exponent) {
     if (!std::isfinite(x)) return x;
