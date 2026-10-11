@@ -3,6 +3,7 @@
 #include <initializer_list>
 extern "C" {
 int APS5_VABI waitpid_nid_postfix(int, int*, int);
+int APS5_VABI wait_nid_postfix(int*);
 int APS5_VABI getpid_nid_postfix(void);
 int* APS5_VABI __error_nid_postfix();
 }
@@ -20,7 +21,16 @@ static void RequireFailure(int pid, int options, int error) {
     Require(waitpid_nid_postfix(pid, nullptr, options) == -1);
     Require(*__error_nid_postfix() == error);
 }
+static void RequireWaitFailure(int* status) {
+    *__error_nid_postfix() = 0;
+    Require(wait_nid_postfix(status) == -1);
+    Require(*__error_nid_postfix() == noChild);
+}
 int main() {
+    int status = untouched;
+    RequireWaitFailure(&status);
+    Require(status == untouched);
+    RequireWaitFailure(nullptr);
     const int self = getpid_nid_postfix();
     for (int pid : {-1, 0, 1, self, self + 1, -self}) {
         for (int options : {0, 1, 2, 3, 4, 8, 16, 32, 0x2c, 0x3f, static_cast<int>(0x80000000u), static_cast<int>(0x80000001u), static_cast<int>(0x8000003fu)})
