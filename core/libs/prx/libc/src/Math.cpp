@@ -469,6 +469,55 @@ short ExpScaled(long double& x, long long scale) {
     return FinishExpScale(x, n + scale);
 }
 
+long double ExpExtended(long double x) {
+    switch (ClassifyExtended(x)) {
+    case ZeroClass: return 1.0L;
+    case InfiniteClass: return std::signbit(x) ? 0.0L : x;
+    case NanClass: return x;
+    default:
+        ExpScaled(x, 0);
+        return x;
+    }
+}
+
+long double EvaluatePolynomial(long double x, const long double* coefficients, int degree) {
+    long double result = coefficients[0];
+    for (int i = 1; i <= degree; ++i) result = result * x + coefficients[i];
+    return result;
+}
+
+long double SinhExpm1Rational(long double x) {
+    static constexpr long double numerator[] = {
+        0xd.604ba2248d1f283p-27L, 0x8.c644368eb68debap-21L, 0xa.5fd526b77ad1728p-16L, 0x8.39385147e87dc88p-13L,
+        0xf.148c91f229b672ep-9L, 0x8.7add5d3a52caaf7p-8L, 0xe.c187027092759ecp-4L,
+    };
+    static constexpr long double denominator[] = {
+        0xd.3d1dbe234e341eap-24L, -0x9.c869fafd283aadfp-18L, 0xd.990d690d0ca448bp-14L, -0xb.39c668b5bbb81c0p-10L,
+        0xb.7cc5cece575eafdp-7L, -0xd.b22b56c9481c48ep-5L, 0xe.c187027092759ecp-4L,
+    };
+    return x * EvaluatePolynomial(x, numerator, 6) / EvaluatePolynomial(x, denominator, 6);
+}
+
+long double SinhExpm1(long double x) {
+    constexpr long double ln2 = 0xb.17217f7d1cf79acp-4L;
+    if (x < -ln2) return ExpExtended(x) - 1.0L;
+    if (x < 0xc.f991f65fcc25f96p-5L) return SinhExpm1Rational(x);
+    if (x < 0x8.c9f53d5681854bbp-3L) {
+        const long double r = SinhExpm1Rational(x - ln2);
+        return (r + r) + 1.0L;
+    }
+    if (x < 0xc.e020fbf6c699b58p-3L) return SinhExpm1Rational(x - 2.0L * ln2) * 4.0L + 3.0L;
+    return ExpExtended(x) - 1.0L;
+}
+
+long double TanhRational(long double x) {
+    constexpr long double p0 = 0xd.90374c0ee5acf98p-16L, p1 = 0xb.ee68f66c55912e2p-9L, p2 = 0xe.c4cc939e86d8649p-5L;
+    constexpr long double q0 = 0xf.7c4469a8d40275fp-21L, q1 = 0xb.73513b18ffda857p-12L, q2 = 0x8.3443d1e7b85b748p-6L;
+    const long double w = x * x;
+    const long double denominator = ((p0 * w + p1) * w + p2) * w + 1.0L;
+    return (x + x * w * ((q0 * w + q1) * w + q2)) / denominator;
+}
+
 constexpr double Exp2Table[] = {
     0x1.6a09e667f3bcdp-1, -0x1.bdd3413b2648p-55, 0x1.6c012750bdabfp-1, -0x1.2895667ff0cp-57,
     0x1.6dfb23c651a2fp-1, -0x1.bbe3a683c88p-58, 0x1.6ff7df9519484p-1, -0x1.83c0f25860fp-56,
@@ -726,15 +775,71 @@ long double APS5_VABI atanl_nid_postfix(long double x) {
     return negative ? -result : result;
 }
 
-long double APS5_VABI expl_nid_postfix(long double x) {
-    switch (ClassifyExtended(x)) {
-    case ZeroClass: return 1.0L;
-    case InfiniteClass: return std::signbit(x) ? 0.0L : x;
-    case NanClass: return x;
-    default:
-        ExpScaled(x, 0);
-        return x;
+long double APS5_VABI expl_nid_postfix(long double x) { return ExpExtended(x); }
+
+long double APS5_VABI coshl_nid_postfix(long double x) {
+    const short xClass = ClassifyExtended(x);
+    if (xClass == NanClass) return x;
+    if (xClass == ZeroClass) return 1.0L;
+    if (xClass == InfiniteClass) return std::numeric_limits<long double>::infinity();
+    long double magnitude = std::fabs(x);
+    if (magnitude < 22.555) {
+        ExpScaled(magnitude, -1);
+        return magnitude + 0.25L / magnitude;
     }
+    ExpScaled(magnitude, -1);
+    return magnitude;
+}
+
+long double APS5_VABI sinhl_nid_postfix(long double x) {
+    constexpr long double p0 = -0xd.4820635d2229661p-23L, p1 = 0x9.047f2e440489befp-15L, p2 = -0xc.591292023a7d870p-9L;
+    constexpr long double q0 = 0xa.efbfee95893c4fbp-18L, q1 = 0x9.65f74d4929aa37bp-11L, q2 = 0x9.1f88586a635b141p-6L;
+    const short xClass = ClassifyExtended(x);
+    if (xClass == ZeroClass || xClass == NanClass) return x;
+    if (xClass == InfiniteClass) return (SplitExtended(x).mantissa >> 63) != 0 ? x : x * x;
+    const bool negative = x < 0.0L;
+    long double magnitude = negative ? -x : x;
+    long double result;
+    if (magnitude < 0x1p-33L) {
+        result = magnitude;
+    } else if (magnitude < 0x8.c9f53d5681854bbp-4L) {
+        const long double w = magnitude * magnitude;
+        const long double denominator = ((p0 * w + p1) * w + p2) * w + 1.0L;
+        result = (magnitude + magnitude * w * ((q0 * w + q1) * w + q2)) / denominator;
+    } else if (magnitude < 4.0L) {
+        const long double t = SinhExpm1(magnitude);
+        result = t * 0.5L * SinhExpm1(-magnitude) + t;
+    } else if (magnitude < 20.02) {
+        const long double t = SinhExpm1(magnitude);
+        result = (SinhExpm1(-magnitude) * 0.5L + 1.0L) * t;
+    } else {
+        ExpScaled(magnitude, -1);
+        result = magnitude;
+    }
+    return negative ? -result : result;
+}
+
+long double APS5_VABI tanhl_nid_postfix(long double x) {
+    const short xClass = ClassifyExtended(x);
+    if (xClass == ZeroClass || xClass == NanClass) return x;
+    if (xClass == InfiniteClass) return std::signbit(x) ? -1.0L : 1.0L;
+    const bool negative = x < 0.0L;
+    const long double magnitude = negative ? -x : x;
+    long double result;
+    if (magnitude < 0x1p-33L) {
+        result = magnitude;
+    } else if (magnitude < 0xb.17217f7d1cf79acp-5L) {
+        result = TanhRational(magnitude);
+    } else if (magnitude < 0xb.17217f7d1cf79acp-4L) {
+        const long double half = TanhRational(magnitude * 0.5L);
+        const long double quotient = half / (1.0L + half * half);
+        result = quotient + quotient;
+    } else if (magnitude < 0xc.4e147ae147ae148p1L) {
+        result = 1.0L + -2.0L / (ExpExtended(magnitude + magnitude) + 1.0L);
+    } else {
+        result = 1.0L;
+    }
+    return negative ? -result : result;
 }
 
 long double APS5_VABI exp2l_nid_postfix(long double x) {

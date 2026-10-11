@@ -36,6 +36,9 @@ long double APS5_VABI atanl_nid_postfix(long double);
 long double APS5_VABI tanl_nid_postfix(long double);
 long double APS5_VABI exp2l_nid_postfix(long double);
 long double APS5_VABI expl_nid_postfix(long double);
+long double APS5_VABI coshl_nid_postfix(long double);
+long double APS5_VABI sinhl_nid_postfix(long double);
+long double APS5_VABI tanhl_nid_postfix(long double);
 long double APS5_VABI frexpl_nid_postfix(long double, int*);
 struct LibcFloatConstant { std::uint32_t bits[4]; };
 extern LibcFloatConstant _FInf_nid_postfix;
@@ -307,6 +310,56 @@ static void CheckExpl() {
         const long double result = expl_nid_postfix(test.input);
         Require(*__error_nid_postfix() == ERANGE && (test.overflow ? std::isinf(result) : result == 0.0L));
         Require(std::fetestexcept(test.overflow ? FE_OVERFLOW : FE_UNDERFLOW) != 0);
+    }
+    *__error_nid_postfix() = 0;
+}
+
+static void CheckHyperbolicLongDouble() {
+    CheckExtendedCases("coshl", coshl_nid_postfix, {
+        {0, 0x0000, 0x8000000000000000ull, 0x3fff}, {0, 0x8000, 0x8000000000000000ull, 0x3fff}, {1, 0x0000, 0x8000000000000000ull, 0x3fff},
+        {0x8000000000000000ull, 0x3fd7, 0x8000000000000000ull, 0x3fff}, {0x8000000000000000ull, 0x3ffe, 0x90560c3157468323ull, 0x3fff},
+        {0x8000000000000000ull, 0xbfff, 0xc583aa8ecfaa8261ull, 0x3fff}, {0x8000000000000000ull, 0x4000, 0xf0c7d06f96cde149ull, 0x4000},
+        {0xa000000000000000ull, 0xc002, 0xac14ee829b896a51ull, 0x400c}, {0xb400000000000000ull, 0x4003, 0xb025b46782fb2fd5ull, 0x401e},
+        {0xb470a3d70a3d70a4ull, 0x4003, 0xba1b549ac285772aull, 0x401e}, {0xb4cccccccccccccdull, 0xc003, 0xc2ac4043595231ffull, 0x401e},
+        {0xc800000000000000ull, 0x4005, 0x9a4a54d8b8dfa566ull, 0x408e}, {0xb16c000000000000ull, 0x400c, 0xdf330b6d400a14d9ull, 0x7ffb},
+        {0xb172000000000000ull, 0x400c, 0xfa13dba329dd768dull, 0x7ffd}, {0xb174000000000000ull, 0xc00c, 0xce2773666cc8cc68ull, 0x7ffe},
+        {0x8000000000000000ull, 0x7fff, 0x8000000000000000ull, 0x7fff}, {0x8000000000000000ull, 0xffff, 0x8000000000000000ull, 0x7fff},
+        {0xc000000000000001ull, 0x7fff, 0xc000000000000001ull, 0x7fff},
+    });
+    CheckExtendedCases("sinhl", sinhl_nid_postfix, {
+        {0, 0x0000, 0, 0x0000}, {0, 0x8000, 0, 0x8000}, {1, 0x0000, 1, 0x0000},
+        {0x8000000000000000ull, 0x3fdd, 0x8000000000000000ull, 0x3fdd}, {0x8000000000000000ull, 0xbfde, 0x8000000000000000ull, 0xbfde},
+        {0x8000000000000000ull, 0x3ffd, 0x815666ce84080f33ull, 0x3ffd}, {0x8000000000000000ull, 0xbffe, 0x8566807f31dcb652ull, 0xbffe},
+        {0x8c9eecbfb15b573full, 0x3ffe, 0x93ccc32456171481ull, 0x3ffe}, {0x999999999999999aull, 0x3ffe, 0xa2fbbaaa353beda6ull, 0x3ffe},
+        {0x8000000000000000ull, 0xbfff, 0x966cfe2275cc12d4ull, 0xbfff}, {0x8000000000000000ull, 0x4000, 0xe81e7b1db70cfb79ull, 0x4000},
+        {0xff5c28f5c28f5c29ull, 0x4000, 0xd8254354050620e1ull, 0x4003}, {0x8000000000000000ull, 0x4001, 0xda51c01b81b18649ull, 0x4003},
+        {0xa000000000000000ull, 0xc002, 0xac14ee76b4cc8f9full, 0xc00c}, {0xa000000000000000ull, 0x4003, 0xe758445b47401fcaull, 0x401a},
+        {0xa028f5c28f5c28f6ull, 0x4003, 0xec04ad33ee68d3aaull, 0x401a}, {0xa800000000000000ull, 0xc003, 0x9d370fecf767eab3ull, 0xc01c},
+        {0xc800000000000000ull, 0x4005, 0x9a4a54d8b8dfa566ull, 0x408e}, {0xb174000000000000ull, 0x400c, 0xce2773666cc8cc68ull, 0x7ffe},
+        {0x8000000000000000ull, 0x7fff, 0x8000000000000000ull, 0x7fff}, {0x8000000000000000ull, 0xffff, 0x8000000000000000ull, 0xffff},
+        {0xc000000000000001ull, 0x7fff, 0xc000000000000001ull, 0x7fff}, {0, 0x7fff, 0xc000000000000000ull, 0xffff},
+    });
+    CheckExtendedCases("tanhl", tanhl_nid_postfix, {
+        {0, 0x0000, 0, 0x0000}, {0, 0x8000, 0, 0x8000}, {1, 0x0000, 1, 0x0000},
+        {0x8000000000000000ull, 0x3fdd, 0x8000000000000000ull, 0x3fdd}, {0x8000000000000000ull, 0xbfde, 0x8000000000000000ull, 0xbfde},
+        {0x8000000000000000ull, 0x3ffd, 0xfacbf534d0e42f8aull, 0x3ffc}, {0x999999999999999aull, 0xbffd, 0x9526ed3ec8a7d089ull, 0xbffd},
+        {0xcccccccccccccccdull, 0x3ffd, 0xc288ab9e1216ae2bull, 0x3ffd}, {0x999999999999999aull, 0xbffe, 0x897c14969667df08ull, 0xbffe},
+        {0xb333333333333333ull, 0x3ffe, 0x9ab7d8bd79748804ull, 0x3ffe}, {0x8000000000000000ull, 0x3fff, 0xc2f7d5a8a79ca2acull, 0x3ffe},
+        {0x8000000000000000ull, 0xc000, 0xf6ca82f0de1e9e9aull, 0xbffe}, {0xa000000000000000ull, 0x4002, 0xffffffee4b79aaa9ull, 0x3ffe},
+        {0xc4cccccccccccccdull, 0x4003, 0x8000000000000000ull, 0x3fff}, {0xc4e147ae147ae148ull, 0x4003, 0x8000000000000000ull, 0x3fff},
+        {0xf000000000000000ull, 0xc003, 0x8000000000000000ull, 0xbfff}, {0x8000000000000000ull, 0x7fff, 0x8000000000000000ull, 0x3fff},
+        {0x8000000000000000ull, 0xffff, 0x8000000000000000ull, 0xbfff}, {0xc000000000000001ull, 0x7fff, 0xc000000000000001ull, 0x7fff},
+    });
+    const struct { ExtendedFunction function; long double input; long double output; } rangeErrors[] = {
+        {coshl_nid_postfix, 11400.0L, std::numeric_limits<long double>::infinity()},
+        {coshl_nid_postfix, -29490.5L, std::numeric_limits<long double>::infinity()},
+        {sinhl_nid_postfix, 11400.0L, std::numeric_limits<long double>::infinity()},
+        {sinhl_nid_postfix, -11400.0L, -std::numeric_limits<long double>::infinity()},
+    };
+    for (const auto& test : rangeErrors) {
+        std::feclearexcept(FE_ALL_EXCEPT);
+        *__error_nid_postfix() = 0;
+        Require(test.function(test.input) == test.output && *__error_nid_postfix() == ERANGE && std::fetestexcept(FE_OVERFLOW) != 0);
     }
     *__error_nid_postfix() = 0;
 }
@@ -593,6 +646,7 @@ int main() {
     CheckTanl();
     CheckExp2l();
     CheckExpl();
+    CheckHyperbolicLongDouble();
     Require(scalbn_nid_postfix(0.75, -2) == 0.1875);
     Require(scalbnf_nid_postfix(0.75f, 4) == 12.f);
     Require(nextafterf_nid_postfix(1.f, 2.f) == 0x1.000002p0f && nextafterf_nid_postfix(1.f, 0.f) == 0x1.fffffep-1f);
