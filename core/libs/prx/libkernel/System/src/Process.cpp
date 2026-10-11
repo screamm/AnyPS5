@@ -18,6 +18,7 @@
 #include "prx/libkernel/DirectMemory/DirectMemory.hpp"
 #include "prx/libkernel/KernelErrors.hpp"
 #include "prx/libkernel/Pthread/include/Pthread.hpp"
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cerrno>
@@ -117,6 +118,7 @@ constexpr int guestInvalid = 22;
 constexpr int guestRlimitData = 2;
 constexpr int guestRlimitCount = 15;
 constexpr std::int64_t guestRlimitInfinity = std::numeric_limits<std::int64_t>::max();
+constexpr std::array<int, 9> guestUnlimitedResources{0, 1, 4, 9, 10, 11, 12, 13, 14};
 
 #ifdef _WIN32
 std::int64_t hostMemoryLimit() {
@@ -437,8 +439,13 @@ int APS5_VABI getrlimit_nid_postfix(int resource, GuestResourceLimit* limit) {
         *__error_nid_postfix() = guestFault;
         return -1;
     }
-    if (resource != guestRlimitData)
-        throw std::runtime_error("getrlimit: unsupported resource " + std::to_string(resource));
+    if (resource != guestRlimitData) {
+        if (std::ranges::find(guestUnlimitedResources, resource) == guestUnlimitedResources.end())
+            throw std::runtime_error("getrlimit: unsupported resource " + std::to_string(resource));
+        limit->rlim_cur = guestRlimitInfinity;
+        limit->rlim_max = guestRlimitInfinity;
+        return 0;
+    }
 #ifdef _WIN32
     const std::int64_t memory = hostMemoryLimit();
     limit->rlim_cur = memory;
