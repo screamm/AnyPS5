@@ -30,7 +30,7 @@ int main() {
         Require(sceAmprAmmGetVirtualAddressRanges(&start, &end, &multimapStart, &multimapEnd) == 0, "AMM ranges were not reported");
         Require(end == multimapStart && multimapEnd - start == 64ull << 30, "AMM ranges are not two adjacent 32 GiB ranges");
         Require(start >= arenaBase && multimapEnd <= arenaEnd - occupied, "AMM ranges overlap the used top of the guest arena");
-        Require(multimapEnd > arenaEnd - occupied - (1ull << 30), "AMM ranges are not at the top of the free guest arena");
+        Require(GuestArena::GuestArenaHighestFree_nid_no_patch(64ull << 30, 2ull << 20) < start, "AMM ranges are not at the top of the free guest arena");
         std::puts("AMM ranges placed below the used top of the guest arena");
         return 0;
     } catch (const std::exception& error) {
