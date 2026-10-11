@@ -24,6 +24,16 @@ if(BUILD_TESTING)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceAmpr>")
     endif()
 
+    add_test_executable(guest_ampr_locale_tests ${LIBS_INCLUDE_DIR}/tests/GuestAmprLocale.cpp)
+    target_include_directories(guest_ampr_locale_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_ampr_locale_tests PRIVATE libSceAmpr libkernel libc)
+    configure_windows_unwind(guest_ampr_locale_tests)
+    add_test(NAME guest_ampr_locale COMMAND guest_ampr_locale_tests)
+    if(WIN32)
+        set_tests_properties(guest_ampr_locale PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceAmpr>")
+    endif()
+
     add_test_executable(guest_ampr_threads_tests ${LIBS_INCLUDE_DIR}/tests/GuestAmprThreads.cpp)
     target_include_directories(guest_ampr_threads_tests PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(guest_ampr_threads_tests PRIVATE libSceAmpr libkernel libc)

@@ -93,4 +93,6 @@ static_assert(alignof(LocinfoStorage) == 8);
 
 }
 
+extern "C" void IosBaseAddStandard_nid_no_patch(GuestLocale::IosBase* stream);
+
 #endif

@@ -34,6 +34,19 @@ std::mutex g_localeInitMutex;
 bool g_localeInitialized = false;
 std::vector<GuestLocale::Facet*> g_registeredFacets;
 
+constexpr std::int64_t StandardStreamCount = 8;
+std::mutex g_standardStreamMutex;
+std::array<GuestLocale::IosBase*, StandardStreamCount + 2> g_standardStreams{};
+std::array<signed char, StandardStreamCount + 2> g_standardStreamOpens{};
+
+bool KeepsStandardStream(std::int64_t index) {
+    if (index < 1 || index > StandardStreamCount) throw std::runtime_error("ios_base destructor: standard stream index out of range");
+    std::lock_guard<std::mutex> lock(g_standardStreamMutex);
+    auto& opens = g_standardStreamOpens[static_cast<std::size_t>(index)];
+    opens = static_cast<signed char>(opens - 1);
+    return opens > 0;
+}
+
 void APS5_VABI DestroyClassicLocale(GuestLocale::Facet*) {
     throw std::runtime_error("Cannot destroy the classic locale");
 }
@@ -230,9 +243,21 @@ std::int32_t _ZNSt6locale2id7_Id_cntE_nid_postfix = 0;
 
 GuestLocale::Implementation* _ZSt21_sceLibcClassicLocale_nid_postfix = &g_classicLocale;
 
+void IosBaseAddStandard_nid_no_patch(GuestLocale::IosBase* stream) {
+    if (stream == nullptr) throw std::invalid_argument("ios_base::_Addstd: null stream");
+    std::lock_guard<std::mutex> lock(g_standardStreamMutex);
+    std::int64_t index = 1;
+    while (index < StandardStreamCount && g_standardStreams[static_cast<std::size_t>(index)] != nullptr && g_standardStreams[static_cast<std::size_t>(index)] != stream) ++index;
+    stream->standardStream = index;
+    g_standardStreams[static_cast<std::size_t>(index)] = stream;
+    auto& opens = g_standardStreamOpens[static_cast<std::size_t>(index)];
+    opens = static_cast<signed char>(opens + 1);
+}
+
 void APS5_VABI _ZNSt8ios_baseD2Ev_nid_postfix(GuestLocale::IosBase* self) {
     if (self == nullptr) throw std::invalid_argument("ios_base destructor: null object");
-    if (self->standardStream != 0 || self->storage != nullptr || self->callbacks != nullptr) throw std::runtime_error("ios_base destructor: unsupported stream storage or callbacks");
+    if (self->standardStream != 0 && KeepsStandardStream(self->standardStream)) return;
+    if (self->storage != nullptr || self->callbacks != nullptr) throw std::runtime_error("ios_base destructor: unsupported stream storage or callbacks");
     if (self->locale != &_ZSt21_sceLibcClassicLocale_nid_postfix) throw std::runtime_error("ios_base destructor: unsupported locale ownership");
     self->locale = nullptr;
 }
