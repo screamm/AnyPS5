@@ -9,6 +9,7 @@
 #include <cstring>
 #include <limits>
 #include <initializer_list>
+#include <utility>
 extern "C" {
 double APS5_VABI atof_nid_postfix(const char*);
 float APS5_VABI strtof_nid_postfix(const char*, char**);
@@ -54,6 +55,9 @@ double APS5_VABI expm1_nid_postfix(double);
 float APS5_VABI logbf_nid_postfix(float);
 double APS5_VABI exp2_nid_postfix(double);
 double APS5_VABI ldexp_nid_postfix(double, int);
+long double APS5_VABI ldexpl_nid_postfix(long double, int);
+double APS5_VABI logb_nid_postfix(double);
+double APS5_VABI remainder_nid_postfix(double, double);
 double APS5_VABI scalbn_nid_postfix(double, int);
 float APS5_VABI scalbnf_nid_postfix(float, int);
 float APS5_VABI nextafterf_nid_postfix(float, float);
@@ -148,6 +152,52 @@ static void CheckLongDouble() {
     Require(frexpl_nid_postfix(INFINITY, &exponent) == INFINITY && exponent == 77);
     Require(frexpl_nid_postfix(-INFINITY, &exponent) == -INFINITY && exponent == 77);
     Require(std::isnan(frexpl_nid_postfix(NAN, &exponent)) && exponent == 77);
+}
+
+static long double MakeExtended(std::uint64_t mantissa, std::uint16_t signExponent) {
+    unsigned char bytes[sizeof(long double)]{};
+    std::memcpy(bytes, &mantissa, 8);
+    std::memcpy(bytes + 8, &signExponent, 2);
+    long double value = 0;
+    std::memcpy(&value, bytes, sizeof(value));
+    return value;
+}
+
+static bool SameDouble(double value, std::uint64_t bits) { return std::bit_cast<std::uint64_t>(value) == bits; }
+
+static void CheckExactLibm() {
+    *__error_nid_postfix() = 12345;
+    Require(ExtendedBits(ldexpl_nid_postfix(0.75L, 4), 0xc000000000000000ull, 0x4002));
+    Require(ExtendedBits(ldexpl_nid_postfix(1.0L, -16445), 1, 0) && ExtendedBits(ldexpl_nid_postfix(1.0L, -16446), 0, 0));
+    Require(ExtendedBits(ldexpl_nid_postfix(3.0L, -16446), 2, 0) && ExtendedBits(ldexpl_nid_postfix(-0.0L, 100), 0, 0x8000));
+    Require(ExtendedBits(ldexpl_nid_postfix(MakeExtended(1, 0), 16445), 0x8000000000000000ull, 0x3fff));
+    Require(ExtendedBits(ldexpl_nid_postfix(MakeExtended(0xffffffffffffffffull, 0x7ffe), 1), 0x8000000000000000ull, 0x7fff));
+    Require(ExtendedBits(ldexpl_nid_postfix(-1.0L, std::numeric_limits<int>::max()), 0x8000000000000000ull, 0xffff));
+    Require(ExtendedBits(ldexpl_nid_postfix(1.0L, std::numeric_limits<int>::min()), 0, 0));
+    Require(std::isnan(ldexpl_nid_postfix(std::numeric_limits<long double>::quiet_NaN(), 3)));
+
+    Require(logb_nid_postfix(8.) == 3. && logb_nid_postfix(-0.75) == -1. && logb_nid_postfix(0x1p-1022) == -1022.);
+    Require(logb_nid_postfix(std::numeric_limits<double>::denorm_min()) == -1074. && logb_nid_postfix(0x0.fffffffffffffp-1022) == -1023.);
+    Require(logb_nid_postfix(-std::numeric_limits<double>::infinity()) == std::numeric_limits<double>::infinity());
+    Require(std::isnan(logb_nid_postfix(std::numeric_limits<double>::quiet_NaN())));
+    std::feclearexcept(FE_ALL_EXCEPT);
+    Require(logb_nid_postfix(-0.) == -std::numeric_limits<double>::infinity() && std::fetestexcept(FE_DIVBYZERO) != 0);
+
+    Require(remainder_nid_postfix(5., 2.) == 1. && SameDouble(remainder_nid_postfix(-7., 2.), 0x3ff0000000000000ull));
+    Require(SameDouble(remainder_nid_postfix(-5.5, 2.), 0x3fe0000000000000ull) && SameDouble(remainder_nid_postfix(0x1p1023, 3.), 0xbff0000000000000ull));
+    Require(SameDouble(remainder_nid_postfix(1e308, 7.), 0x4008000000000000ull) && SameDouble(remainder_nid_postfix(-4., 2.), 0x8000000000000000ull));
+    Require(SameDouble(remainder_nid_postfix(0x7p-1074, 0x2p-1074), 0x8000000000000001ull) && remainder_nid_postfix(3., INFINITY) == 3.);
+    Require(SameDouble(remainder_nid_postfix(std::bit_cast<double>(0xfff8000000000001ull), std::bit_cast<double>(0x7ff8000000000005ull)), 0x7ff8000000000005ull));
+    Require(SameDouble(remainder_nid_postfix(std::bit_cast<double>(0xfff8000000000000ull), std::bit_cast<double>(0x7ff8000000000000ull)), 0x7ff8000000000000ull));
+    Require(SameDouble(remainder_nid_postfix(std::bit_cast<double>(0x7ff0000000000001ull), 0.), 0x7ff8000000000001ull));
+    Require(*__error_nid_postfix() == 12345);
+    for (const auto& operands : {std::pair{1., 0.}, std::pair{-0., -0.}, std::pair{static_cast<double>(INFINITY), 2.}, std::pair{-static_cast<double>(INFINITY), 0.}}) {
+        std::feclearexcept(FE_ALL_EXCEPT);
+        *__error_nid_postfix() = 0;
+        Require(SameDouble(remainder_nid_postfix(operands.first, operands.second), 0xfff8000000000000ull));
+        Require(*__error_nid_postfix() == EDOM && std::fetestexcept(FE_INVALID) != 0);
+    }
+    *__error_nid_postfix() = 0;
 }
 
 static void CheckIntegerConversions() {
@@ -427,6 +477,7 @@ int main() {
     CheckSquareRoot();
     CheckExactOperations();
     CheckLongDouble();
+    CheckExactLibm();
     Require(scalbn_nid_postfix(0.75, -2) == 0.1875);
     Require(scalbnf_nid_postfix(0.75f, 4) == 12.f);
     Require(nextafterf_nid_postfix(1.f, 2.f) == 0x1.000002p0f && nextafterf_nid_postfix(1.f, 0.f) == 0x1.fffffep-1f);

@@ -1,11 +1,14 @@
 #include <mutex>
+#include <algorithm>
 #include <bit>
 #include <cstdint>
+#include <cerrno>
 #include <cfenv>
 #include <cmath>
 #include <cstdlib>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 
 #include "prx/libc/include/General.hpp"
@@ -21,6 +24,23 @@ std::int64_t RoundToInt64(TFloat value) {
         return INT64_MIN;
     }
     return static_cast<std::int64_t>(rounded);
+}
+
+double X87NanOperand(double x, double y) {
+    constexpr std::uint64_t Quiet = 0x0008000000000000ull, Fraction = 0x000fffffffffffffull;
+    const std::uint64_t xBits = std::bit_cast<std::uint64_t>(x) | Quiet;
+    const std::uint64_t yBits = std::bit_cast<std::uint64_t>(y) | Quiet;
+    if (!std::isnan(y)) return std::bit_cast<double>(xBits);
+    if (!std::isnan(x)) return std::bit_cast<double>(yBits);
+    if ((xBits & Fraction) != (yBits & Fraction)) return std::bit_cast<double>((xBits & Fraction) > (yBits & Fraction) ? xBits : yBits);
+    return std::bit_cast<double>(std::min(xBits, yBits));
+}
+
+void RaiseLibcError(int exceptions) {
+    if ((exceptions & (FE_OVERFLOW | FE_UNDERFLOW)) != 0) exceptions |= FE_INEXACT;
+    std::feraiseexcept(exceptions);
+    const bool range = (exceptions & FE_INVALID) == 0 && (exceptions & (FE_DIVBYZERO | FE_OVERFLOW | FE_UNDERFLOW)) != 0;
+    errno = range ? ERANGE : EDOM;
 }
 
 }
@@ -55,6 +75,54 @@ float APS5_VABI log10f_nid_postfix(float x) { return std::log10(x); }
 float APS5_VABI logbf_nid_postfix(float x) { return std::logb(x); }
 double APS5_VABI exp2_nid_postfix(double x) { return std::exp2(x); }
 double APS5_VABI ldexp_nid_postfix(double x, int exponent) { return std::ldexp(x, exponent); }
+long double APS5_VABI ldexpl_nid_postfix(long double x, int exponent) {
+    const int previousErrno = errno;
+    const long double result = std::scalbn(x, exponent);
+    errno = previousErrno;
+    return result;
+}
+
+double APS5_VABI logb_nid_postfix(double x) {
+    const std::uint64_t bits = std::bit_cast<std::uint64_t>(x);
+    const std::uint32_t high = static_cast<std::uint32_t>(bits >> 32) & 0x7fffffffu;
+    if ((high | static_cast<std::uint32_t>(bits)) == 0) return -1.0 / std::fabs(x);
+    if (high >= 0x7ff00000u) return x * x;
+    if (high < 0x00100000u) {
+        const std::uint64_t normalized = std::bit_cast<std::uint64_t>(x * 0x1p54);
+        return static_cast<double>(static_cast<int>((normalized >> 52) & 0x7ff) - 1023 - 54);
+    }
+    return static_cast<double>(static_cast<int>(high >> 20) - 1023);
+}
+
+double APS5_VABI remainder_nid_postfix(double x, double y) {
+    const bool xNan = std::isnan(x);
+    const bool yNan = std::isnan(y);
+    if ((std::isinf(x) && !yNan) || (y == 0.0 && !xNan)) RaiseLibcError(FE_INVALID);
+    if (xNan || yNan) return X87NanOperand(x, y);
+    if (std::isinf(x) || y == 0.0) return std::bit_cast<double>(0xfff8000000000000ull);
+    if (std::isinf(y)) return x;
+    const std::uint64_t xBits = std::bit_cast<std::uint64_t>(x);
+    const std::uint64_t sign = xBits & 0x8000000000000000ull;
+    const double divisor = std::fabs(y);
+    if (divisor <= 0x1.fffffffffffffp1022) x = std::fmod(x, divisor + divisor);
+    if ((xBits & 0x7fffffffffffffffull) == std::bit_cast<std::uint64_t>(divisor)) return 0.0 * x;
+    x = std::fabs(x);
+    if (divisor < 0x1p-1021) {
+        if (x + x > divisor) {
+            x -= divisor;
+            if (x + x >= divisor) x -= divisor;
+        }
+    } else {
+        const double half = 0.5 * divisor;
+        if (x > half) {
+            x -= divisor;
+            if (x >= half) x -= divisor;
+        }
+    }
+    const std::uint64_t resultBits = std::bit_cast<std::uint64_t>(x);
+    return std::bit_cast<double>(((resultBits & 0x7fffffffffffffffull) == 0 ? 0 : resultBits) ^ sign);
+}
+
 double APS5_VABI scalbn_nid_postfix(double x, int exponent) { return std::scalbn(x, exponent); }
 float APS5_VABI scalbnf_nid_postfix(float x, int exponent) { return std::scalbn(x, exponent); }
 double APS5_VABI frexp_nid_postfix(double x, int* exponent) { return std::frexp(x, exponent); }
