@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <stdexcept>
 
 #include "prx/libc/include/General.hpp"
@@ -169,6 +170,7 @@ short APS5_VABI _FDtest_nid_postfix(const float* value) {
     return Finite;
 }
 int APS5_VABI __isnanf_nid_postfix(float x) { return std::isnan(x) ? 1 : 0; }
+int APS5_VABI isnanf_nid_postfix(float x) { return __isnanf_nid_postfix(x); }
 int APS5_VABI __fpclassifyf_nid_postfix(float x) {
     constexpr int Infinite = 0x01, NotANumber = 0x02, Normal = 0x04, Subnormal = 0x08, Zero = 0x10;
     std::uint32_t bits;
@@ -180,6 +182,12 @@ int APS5_VABI __fpclassifyf_nid_postfix(float x) {
     return Normal;
 }
 int APS5_VABI __signbitf_nid_postfix(float x) { return std::signbit(x) ? 1 : 0; }
+int APS5_VABI __signbitl_nid_postfix(long double x) {
+    static_assert(sizeof(long double) == 16 && std::numeric_limits<long double>::digits == 64);
+    unsigned char bytes[sizeof(long double)];
+    std::memcpy(bytes, &x, sizeof(bytes));
+    return bytes[9] >> 7;
+}
 
 static std::mutex g_randLock;
 static std::uint32_t g_randState = 1;

@@ -77,6 +77,8 @@ int APS5_VABI __isnormal_nid_postfix(double);
 int APS5_VABI __isnormalf_nid_postfix(float);
 int APS5_VABI __isinff_nid_postfix(float);
 int APS5_VABI __isinf_nid_postfix(double);
+int APS5_VABI isnanf_nid_postfix(float);
+int APS5_VABI __signbitl_nid_postfix(long double);
 std::lldiv_t APS5_VABI lldiv_nid_postfix(long long, long long);
 std::lldiv_t APS5_VABI ldiv_nid_postfix(std::int64_t, std::int64_t);
 float APS5_VABI nanf_nid_postfix(const char*);
@@ -148,6 +150,26 @@ static void CheckLongDouble() {
     Require(frexpl_nid_postfix(INFINITY, &exponent) == INFINITY && exponent == 77);
     Require(frexpl_nid_postfix(-INFINITY, &exponent) == -INFINITY && exponent == 77);
     Require(std::isnan(frexpl_nid_postfix(NAN, &exponent)) && exponent == 77);
+}
+
+static void CheckClassification() {
+    const auto floatInfinity = std::numeric_limits<float>::infinity();
+    Require(isnanf_nid_postfix(std::numeric_limits<float>::quiet_NaN()) == 1);
+    Require(isnanf_nid_postfix(-std::numeric_limits<float>::quiet_NaN()) == 1);
+    Require(isnanf_nid_postfix(std::bit_cast<float>(0x7f800001u)) == 1 && isnanf_nid_postfix(std::bit_cast<float>(0xffbfffffu)) == 1);
+    Require(isnanf_nid_postfix(floatInfinity) == 0 && isnanf_nid_postfix(-floatInfinity) == 0);
+    Require(isnanf_nid_postfix(0.f) == 0 && isnanf_nid_postfix(-0.f) == 0);
+    Require(isnanf_nid_postfix(1.5f) == 0 && isnanf_nid_postfix(-std::numeric_limits<float>::max()) == 0);
+    Require(isnanf_nid_postfix(std::numeric_limits<float>::denorm_min()) == 0);
+
+    const auto infinity = std::numeric_limits<long double>::infinity();
+    const auto nan = std::numeric_limits<long double>::quiet_NaN();
+    Require(__signbitl_nid_postfix(0.0L) == 0 && __signbitl_nid_postfix(-0.0L) == 1);
+    Require(__signbitl_nid_postfix(infinity) == 0 && __signbitl_nid_postfix(-infinity) == 1);
+    Require(__signbitl_nid_postfix(nan) == 0 && __signbitl_nid_postfix(std::copysign(nan, -1.0L)) == 1);
+    Require(__signbitl_nid_postfix(1.5L) == 0 && __signbitl_nid_postfix(-1.5L) == 1);
+    Require(__signbitl_nid_postfix(std::numeric_limits<long double>::max()) == 0 && __signbitl_nid_postfix(std::numeric_limits<long double>::lowest()) == 1);
+    Require(__signbitl_nid_postfix(std::numeric_limits<long double>::denorm_min()) == 0 && __signbitl_nid_postfix(-std::numeric_limits<long double>::denorm_min()) == 1);
 }
 
 static void CheckIntegerConversions() {
@@ -493,4 +515,5 @@ int main() {
     Require(abs_nid_postfix(std::numeric_limits<int>::min()) == std::numeric_limits<int>::min());
     CheckHyperbolic();
     CheckHypotSpecialValue();
+    CheckClassification();
 }
