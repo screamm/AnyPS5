@@ -95,6 +95,14 @@ struct KernelAioRwRequest {
     std::int32_t fd;
 };
 
+struct KernelAioSchedulingParam {
+    std::int32_t schedulingWindowSize;
+    std::int32_t delayedCountLimit;
+    std::uint32_t enableSplit;
+    std::uint32_t splitSize;
+    std::uint32_t splitChunkSize;
+};
+
 struct KernelBatchMapEntry {
     void* start;
     std::uint64_t offset;
