@@ -16,6 +16,7 @@
 #endif
 
 extern "C" int* APS5_VABI __error_nid_postfix();
+extern "C" int APS5_VABI getpid_nid_postfix(void);
 
 struct SceKernelSystemSwVersion {
     std::uint64_t size;
@@ -24,6 +25,8 @@ struct SceKernelSystemSwVersion {
 };
 
 namespace {
+
+constexpr char MainExecutableGuestPath[] = "/app0/eboot.bin";
 
 int CopyOut(const void* value, std::size_t size, void* oldValue, std::size_t* oldLength) {
     if (oldValue == nullptr) {
@@ -38,6 +41,18 @@ int CopyOut(const void* value, std::size_t size, void* oldValue, std::size_t* ol
         return -1;
     }
     return 0;
+}
+
+int ProcessPathname(const int* arguments, std::uint32_t argumentCount, void* oldValue, std::size_t* oldLength) {
+    if (argumentCount != 1) {
+        *__error_nid_postfix() = 22;
+        return -1;
+    }
+    if (arguments[0] != -1 && arguments[0] != getpid_nid_postfix()) {
+        *__error_nid_postfix() = 3;
+        return -1;
+    }
+    return CopyOut(MainExecutableGuestPath, sizeof(MainExecutableGuestPath), oldValue, oldLength);
 }
 
 }
@@ -90,7 +105,10 @@ int APS5_VABI sysctl_nid_postfix(const int* name, std::uint32_t nameLength, void
         *__error_nid_postfix() = 14;
         return -1;
     }
-    if (nameLength != 2 || name[0] != 6 || name[1] != 3) {
+    const bool processPathname = nameLength >= 3 && name[0] == 1 && name[1] == 14 && name[2] == 12;
+    const bool processorCount = nameLength == 2 && name[0] == 6 && name[1] == 3;
+    const bool physicalMemory = nameLength == 2 && name[0] == 6 && name[1] == 5;
+    if (!processPathname && !processorCount && !physicalMemory) {
         std::string mib;
         for (std::uint32_t i = 0; i < nameLength; ++i) mib += (i == 0 ? "" : ".") + std::to_string(name[i]);
         throw std::runtime_error(std::string(__func__) + ": unsupported MIB " + mib);
@@ -98,6 +116,13 @@ int APS5_VABI sysctl_nid_postfix(const int* name, std::uint32_t nameLength, void
     if (newValue != nullptr) {
         *__error_nid_postfix() = 1;
         return -1;
+    }
+    if (processPathname) return ProcessPathname(name + 3, nameLength - 3, oldValue, oldLength);
+    if (physicalMemory) {
+        const std::int64_t pages = sysconf_nid_postfix(121);
+        if (pages <= 0) return -1;
+        const std::uint64_t value = static_cast<std::uint64_t>(pages) * PS5_PAGE_SIZE;
+        return CopyOut(&value, sizeof(value), oldValue, oldLength);
     }
     const std::int64_t processors = sysconf_nid_postfix(58);
     if (processors <= 0) return -1;
@@ -121,9 +146,23 @@ int APS5_VABI sysctlbyname_nid_postfix(const char* name, void* oldValue, std::si
         for (std::size_t i = 0; i < *oldLength; ++i) bytes[i] = static_cast<std::uint8_t>(device());
         return 0;
     }
-    if (std::strcmp(name, "hw.ncpu") != 0) throw std::runtime_error(std::string(__func__) + ": unsupported name " + name);
-    static constexpr int mib[] = {6, 3};
-    return sysctl_nid_postfix(mib, 2, oldValue, oldLength, newValue, newLength);
+    if (std::strcmp(name, "machdep.cacheline_size") == 0) {
+        *__error_nid_postfix() = 2;
+        return -1;
+    }
+    if (std::strcmp(name, "hw.ncpu") == 0) {
+        static constexpr int mib[] = {6, 3};
+        return sysctl_nid_postfix(mib, 2, oldValue, oldLength, newValue, newLength);
+    }
+    if (std::strcmp(name, "hw.physmem") == 0) {
+        static constexpr int mib[] = {6, 5};
+        return sysctl_nid_postfix(mib, 2, oldValue, oldLength, newValue, newLength);
+    }
+    if (std::strcmp(name, "kern.proc.pathname") == 0) {
+        static constexpr int mib[] = {1, 14, 12};
+        return sysctl_nid_postfix(mib, 3, oldValue, oldLength, newValue, newLength);
+    }
+    throw std::runtime_error(std::string(__func__) + ": unsupported name " + name);
 }
 
 int APS5_VABI sceKernelGetSystemSwVersion_nid_postfix(SceKernelSystemSwVersion* version) {

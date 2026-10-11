@@ -17,6 +17,7 @@ static_assert(sizeof(SceKernelSystemSwVersion) == 0x28);
 extern "C" {
 std::int64_t APS5_VABI sysconf_nid_postfix(int);
 int APS5_VABI getpagesize_nid_postfix();
+int APS5_VABI getpid_nid_postfix();
 int* APS5_VABI __error_nid_postfix();
 int APS5_VABI sysctl_nid_postfix(const int*, std::uint32_t, void*, std::size_t*, const void*, std::size_t);
 int APS5_VABI sysctlbyname_nid_postfix(const char*, void*, std::size_t*, const void*, std::size_t);
@@ -56,7 +57,7 @@ static void CheckProcessorCountSysctl() {
     }
     Require(threw);
     threw = false;
-    const int unknown[] = {6, 5};
+    const int unknown[] = {6, 7};
     try {
         sysctl_nid_postfix(unknown, 2, &value, &length, nullptr, 0);
     } catch (const std::runtime_error&) {
@@ -107,8 +108,78 @@ static void CheckPseudoRandomSysctl() {
     }
     Require(threw);
 }
+static void CheckProcessPathnameSysctl() {
+    static constexpr char path[] = "/app0/eboot.bin";
+    const int self[] = {1, 14, 12, -1};
+    const int own[] = {1, 14, 12, getpid_nid_postfix()};
+    const int other[] = {1, 14, 12, getpid_nid_postfix() + 1};
+    *__error_nid_postfix() = 13;
+    std::size_t length = 0;
+    Require(sysctl_nid_postfix(self, 4, nullptr, &length, nullptr, 0) == 0 && length == sizeof(path));
+    char buffer[64];
+    std::memset(buffer, 0x55, sizeof(buffer));
+    length = sizeof(buffer);
+    Require(sysctl_nid_postfix(self, 4, buffer, &length, nullptr, 0) == 0 && length == sizeof(path));
+    Require(std::memcmp(buffer, path, sizeof(path)) == 0 && buffer[sizeof(path)] == 0x55);
+    std::memset(buffer, 0x55, sizeof(buffer));
+    length = sizeof(buffer);
+    Require(sysctl_nid_postfix(own, 4, buffer, &length, nullptr, 0) == 0 && length == sizeof(path));
+    Require(std::memcmp(buffer, path, sizeof(path)) == 0);
+    Require(*__error_nid_postfix() == 13);
+    std::memset(buffer, 0x55, sizeof(buffer));
+    length = 5;
+    Require(sysctl_nid_postfix(self, 4, buffer, &length, nullptr, 0) == -1 && *__error_nid_postfix() == 12);
+    Require(length == 5 && std::memcmp(buffer, path, 5) == 0 && buffer[5] == 0x55);
+    length = sizeof(buffer);
+    Require(sysctl_nid_postfix(other, 4, buffer, &length, nullptr, 0) == -1 && *__error_nid_postfix() == 3);
+    Require(sysctl_nid_postfix(self, 4, buffer, &length, buffer, sizeof(path)) == -1 && *__error_nid_postfix() == 1);
+    Require(sysctl_nid_postfix(self, 3, buffer, &length, nullptr, 0) == -1 && *__error_nid_postfix() == 22);
+    const int extra[] = {1, 14, 12, -1, 0};
+    Require(sysctl_nid_postfix(extra, 5, buffer, &length, nullptr, 0) == -1 && *__error_nid_postfix() == 22);
+    *__error_nid_postfix() = 13;
+    length = 0;
+    Require(sysctlbyname_nid_postfix("kern.proc.pathname", nullptr, &length, nullptr, 0) == -1 && *__error_nid_postfix() == 22);
+    Require(sysctlbyname_nid_postfix("kern.proc.pathname", buffer, &length, buffer, 1) == -1 && *__error_nid_postfix() == 1);
+}
+static void CheckCacheLineSizeSysctl() {
+    int value = 0x55;
+    std::size_t length = sizeof(value);
+    *__error_nid_postfix() = 13;
+    Require(sysctlbyname_nid_postfix("machdep.cacheline_size", &value, &length, nullptr, 0) == -1 && *__error_nid_postfix() == 2);
+    Require(value == 0x55 && length == sizeof(value));
+    *__error_nid_postfix() = 13;
+    Require(sysctlbyname_nid_postfix("machdep.cacheline_size", nullptr, &length, nullptr, 0) == -1 && *__error_nid_postfix() == 2);
+    Require(length == sizeof(value));
+    *__error_nid_postfix() = 13;
+    Require(sysctlbyname_nid_postfix("machdep.cacheline_size", nullptr, nullptr, &value, sizeof(value)) == -1 && *__error_nid_postfix() == 2);
+}
+static void CheckPhysicalMemorySysctl() {
+    const int mib[] = {6, 5};
+    const std::uint64_t expected = static_cast<std::uint64_t>(sysconf_nid_postfix(121)) * 0x4000;
+    *__error_nid_postfix() = 13;
+    std::size_t length = 0;
+    Require(sysctl_nid_postfix(mib, 2, nullptr, &length, nullptr, 0) == 0 && length == sizeof(std::uint64_t));
+    std::uint64_t value = 0;
+    length = sizeof(value);
+    Require(sysctl_nid_postfix(mib, 2, &value, &length, nullptr, 0) == 0 && value == expected && length == sizeof(value));
+    value = 0;
+    length = 16;
+    Require(sysctlbyname_nid_postfix("hw.physmem", &value, &length, nullptr, 0) == 0 && value == expected && length == sizeof(value));
+    Require(*__error_nid_postfix() == 13);
+    unsigned char bytes[8];
+    std::memset(bytes, 0xaa, sizeof(bytes));
+    length = 4;
+    Require(sysctlbyname_nid_postfix("hw.physmem", bytes, &length, nullptr, 0) == -1 && *__error_nid_postfix() == 12);
+    Require(length == 4 && std::memcmp(bytes, &expected, 4) == 0 && bytes[4] == 0xaa);
+    length = sizeof(value);
+    Require(sysctlbyname_nid_postfix("hw.physmem", &value, &length, &value, sizeof(value)) == -1 && *__error_nid_postfix() == 1);
+    Require(sysctl_nid_postfix(mib, 2, &value, &length, &value, sizeof(value)) == -1 && *__error_nid_postfix() == 1);
+}
 int main() {
     CheckProcessorCountSysctl();
+    CheckProcessPathnameSysctl();
+    CheckCacheLineSizeSysctl();
+    CheckPhysicalMemorySysctl();
     CheckSystemSwVersion();
     CheckPseudoRandomSysctl();
     *__error_nid_postfix() = 13;
