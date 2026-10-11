@@ -842,6 +842,40 @@ long double APS5_VABI tanhl_nid_postfix(long double x) {
     return negative ? -result : result;
 }
 
+long double APS5_VABI log10l_nid_postfix(long double x) {
+    static constexpr long double coefficients[] = {
+        0x8.7f45b3375e0c9edp-6L, 0x8.7a58c55129af2f8p-6L, 0x9.d90cfd7547e4ed2p-6L, 0xb.a2e6ba9488d3d0cp-6L,
+        0xe.38e393a60e2888bp-6L, 0x9.24924920646cc89p-5L, 0xc.ccccccccd00c2ebp-5L, 0xa.aaaaaaaaaaaa334p-4L,
+    };
+    constexpr long double log10OfELow = 0xa.937287195355babp-29L, log10OfE = 0xd.e5bd8a937287195p-5L, log10Of2Low = -0xa.13ef3fde623e256p-27L;
+    constexpr float log10OfEHigh = 0x1.bcb7b0p-2f, log10Of2High = 0x1.344130p-2f;
+    const ExtendedParts parts = SplitExtended(x);
+    const std::uint16_t sign = parts.signExponent & 0x8000;
+    const int exponentField = parts.signExponent & 0x7fff;
+    if (exponentField == 0x7fff && ((parts.mantissa << 1) != 0 || sign == 0)) return x;
+    if (exponentField != 0x7fff && parts.mantissa == 0) {
+        RaiseLibcError(FE_DIVBYZERO);
+        return -std::numeric_limits<long double>::infinity();
+    }
+    if (sign != 0) {
+        RaiseLibcError(FE_INVALID);
+        return JoinExtended(0xc000000000000000ull, 0x7fff);
+    }
+    const int shift = std::countl_zero(parts.mantissa);
+    long double f = JoinExtended(parts.mantissa << shift, 0x3ffe);
+    int exponent = std::max(exponentField, 1) - shift - 0x3ffe;
+    if (f < 0xb.504f333f9de6484p-4L) {
+        f = f + f;
+        --exponent;
+    }
+    const long double fMinusOne = f - 1.0L;
+    const long double z = fMinusOne / (f + 1.0L);
+    const long double w = z * z;
+    const long double low = z * (fMinusOne - w * EvaluatePolynomial(w, coefficients, 7));
+    const long double scaled = static_cast<long double>(exponent);
+    return ((fMinusOne * log10OfELow - (low * log10OfE + log10Of2Low * scaled)) + fMinusOne * log10OfEHigh) + scaled * log10Of2High;
+}
+
 long double APS5_VABI exp2l_nid_postfix(long double x) {
     constexpr double redux = 0x1.8p63 / 128;
     constexpr double p1 = 0x1.62e42fefa39efp-1, p2 = 0x1.ebfbdff82c58fp-3, p3 = 0x1.c6b08d7049fap-5;

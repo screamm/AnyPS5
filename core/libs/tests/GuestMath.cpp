@@ -39,6 +39,7 @@ long double APS5_VABI expl_nid_postfix(long double);
 long double APS5_VABI coshl_nid_postfix(long double);
 long double APS5_VABI sinhl_nid_postfix(long double);
 long double APS5_VABI tanhl_nid_postfix(long double);
+long double APS5_VABI log10l_nid_postfix(long double);
 long double APS5_VABI frexpl_nid_postfix(long double, int*);
 struct LibcFloatConstant { std::uint32_t bits[4]; };
 extern LibcFloatConstant _FInf_nid_postfix;
@@ -364,6 +365,34 @@ static void CheckHyperbolicLongDouble() {
     *__error_nid_postfix() = 0;
 }
 
+static void CheckLog10l() {
+    CheckExtendedCases("log10l", log10l_nid_postfix, {
+        {0x8000000000000000ull, 0x3fff, 0, 0x0000}, {0xa000000000000000ull, 0x4002, 0x8000000000000000ull, 0x3fff},
+        {0xc800000000000000ull, 0x4005, 0x8000000000000000ull, 0x4000}, {0xfa00000000000000ull, 0x4008, 0xc000000000000000ull, 0x4000},
+        {0xcccccccccccccccdull, 0x3ffb, 0x8000000000000000ull, 0xbfff}, {0x83126e978d4fdf3bull, 0x3ff5, 0xc000000000000000ull, 0xc000},
+        {0x8000000000000000ull, 0x4000, 0x9a209a84fbcff799ull, 0x3ffd}, {0x8000000000000000ull, 0x3ffe, 0x9a209a84fbcff799ull, 0xbffd},
+        {0xb504f333f9de6433ull, 0x3ffe, 0x9a209a84fbcff860ull, 0xbffc}, {0xb504f333f9de6484ull, 0x3ffe, 0x9a209a84fbcff799ull, 0xbffc},
+        {0xc000000000000000ull, 0x4000, 0xf4493cb27eafe846ull, 0x3ffd}, {0xd1ba8323fe558c61ull, 0x73e6, 0xfa00000000000000ull, 0x400a},
+        {0x9c3d73864f3805c0ull, 0x0c17, 0xfa00000000000000ull, 0xc00a}, {1, 0x0000, 0x9ab38198428ff9d1ull, 0xc00b},
+        {0xffffffffffffffffull, 0x7ffe, 0x9a209a84fbcff799ull, 0x400b}, {0xffffffffffffffffull, 0x3ffe, 0xde5bd8a937287196ull, 0xbfbd},
+        {0x8000000000000001ull, 0x3fff, 0xde5bd8a937287194ull, 0x3fbe}, {0xffffffffffffffffull, 0x0000, 0x9a1960fdbd9429d9ull, 0xc00b},
+        {0x8000000000000000ull, 0x7fff, 0x8000000000000000ull, 0x7fff}, {0xc000000000000001ull, 0x7fff, 0xc000000000000001ull, 0x7fff},
+        {0x4000000000000000ull, 0x3fff, 0x9a209a84fbcff799ull, 0xbffd},
+    });
+    const struct { std::uint64_t mantissa; std::uint16_t signExponent; int error; int exception; } domainErrors[] = {
+        {0, 0x0000, ERANGE, FE_DIVBYZERO}, {0, 0x8000, ERANGE, FE_DIVBYZERO}, {0, 0x3fff, ERANGE, FE_DIVBYZERO},
+        {0x8000000000000000ull, 0xbfff, EDOM, FE_INVALID}, {1, 0x8000, EDOM, FE_INVALID}, {0x8000000000000000ull, 0xffff, EDOM, FE_INVALID},
+    };
+    for (const auto& test : domainErrors) {
+        std::feclearexcept(FE_ALL_EXCEPT);
+        *__error_nid_postfix() = 0;
+        const long double result = log10l_nid_postfix(MakeExtended(test.mantissa, test.signExponent));
+        const bool expected = test.error == ERANGE ? ExtendedBits(result, 0x8000000000000000ull, 0xffff) : ExtendedBits(result, 0xc000000000000000ull, 0x7fff);
+        Require(expected && *__error_nid_postfix() == test.error && std::fetestexcept(test.exception) != 0);
+    }
+    *__error_nid_postfix() = 0;
+}
+
 static void CheckIntegerConversions() {
     for (const long long numerator : {4294967301LL, -4294967301LL}) {
         for (const long long denominator : {3LL, -3LL}) {
@@ -647,6 +676,7 @@ int main() {
     CheckExp2l();
     CheckExpl();
     CheckHyperbolicLongDouble();
+    CheckLog10l();
     Require(scalbn_nid_postfix(0.75, -2) == 0.1875);
     Require(scalbnf_nid_postfix(0.75f, 4) == 12.f);
     Require(nextafterf_nid_postfix(1.f, 2.f) == 0x1.000002p0f && nextafterf_nid_postfix(1.f, 0.f) == 0x1.fffffep-1f);
