@@ -33,6 +33,7 @@ double APS5_VABI trunc_nid_postfix(double);
 double APS5_VABI fma_nid_postfix(double, double, double);
 long double APS5_VABI acosl_nid_postfix(long double);
 long double APS5_VABI atanl_nid_postfix(long double);
+long double APS5_VABI tanl_nid_postfix(long double);
 long double APS5_VABI frexpl_nid_postfix(long double, int*);
 struct LibcFloatConstant { std::uint32_t bits[4]; };
 extern LibcFloatConstant _FInf_nid_postfix;
@@ -235,6 +236,32 @@ static void CheckAtanl() {
         {0x8000000000000000ull, 0xc040, 0xc90fdaa22168c235ull, 0xbfff}, {0x8000000000000000ull, 0x7fff, 0xc90fdaa22168c235ull, 0x3fff},
         {0x8000000000000000ull, 0xffff, 0xc90fdaa22168c235ull, 0xbfff}, {0xc000000000000001ull, 0x7fff, 0xc000000000000001ull, 0x7fff},
     });
+}
+
+static void CheckTanl() {
+    CheckExtendedCases("tanl", tanl_nid_postfix, {
+        {0, 0x0000, 0, 0x0000}, {0, 0x8000, 0, 0x8000}, {1, 0x0000, 1, 0x0000}, {0x8000000000000000ull, 0x3fd7, 0x8000000000000000ull, 0x3fd7},
+        {0x8000000000000000ull, 0x3ffe, 0x8bda7adf9a3a5219ull, 0x3ffe}, {0xaca18bd66277c45dull, 0xbffe, 0xcca1b88ee1674910ull, 0xbffe},
+        {0xc90fdaa22168c183ull, 0x3ffe, 0xfffffffffffffe9cull, 0x3ffe}, {0xcccccccccccccccdull, 0x3ffe, 0x83cb323c9db05471ull, 0x3fff},
+        {0x8000000000000000ull, 0x3fff, 0xc75922e5f71d2dc5ull, 0x3fff}, {0xc000000000000000ull, 0xbfff, 0xe19f6a85c43bbad3ull, 0xc002},
+        {0xc90fdaa22168c183ull, 0x3fff, 0xb854579eb3551760ull, 0x4036}, {0xc90fdaa22168c233ull, 0x4000, 0xe2633145c06e0e69ull, 0xbfc1},
+        {0xa000000000000000ull, 0xc002, 0xa5faf9a5f1bc12f0ull, 0xbffe}, {0xbebc200000000000ull, 0x4019, 0xa414f41fa4ac45c1ull, 0xc000},
+        {0xc90fdaa200000000ull, 0x4018, 0x85a314f6a015a8e4ull, 0xbff6}, {0xc90fdaa300000000ull, 0x4018, 0xde9abf5f5051270full, 0x3ff8},
+        {0x8000000000000000ull, 0x4063, 0xe437dfd4676618f8ull, 0xbfff}, {0xbf21e44003acdd2dull, 0xc3e3, 0x805558d665b191bcull, 0x3fff},
+        {0xffffffffffffffffull, 0x7ffe, 0xfde654994ce86fdbull, 0xc001}, {0x8000000000000000ull, 0x7fff, 0xc000000000000000ull, 0xffff},
+        {0x8000000000000000ull, 0xffff, 0xc000000000000000ull, 0xffff}, {0xc000000000000001ull, 0x7fff, 0xc000000000000001ull, 0x7fff},
+    });
+    for (const std::uint16_t signExponent : {std::uint16_t{0x7fff}, std::uint16_t{0xffff}}) {
+        std::feclearexcept(FE_ALL_EXCEPT);
+        *__error_nid_postfix() = 0;
+        Require(std::isnan(tanl_nid_postfix(MakeExtended(0, signExponent))) && *__error_nid_postfix() == EDOM && std::fetestexcept(FE_INVALID) != 0);
+    }
+    *__error_nid_postfix() = 0;
+    std::feclearexcept(FE_ALL_EXCEPT);
+    Require(ExtendedBits(tanl_nid_postfix(MakeExtended(0x4000000000000000ull, 0x4018)), 0xc000000000000000ull, 0xffff) && std::fetestexcept(FE_INVALID) != 0);
+    bool threw = false;
+    try { tanl_nid_postfix(MakeExtended(0x4000000000000000ull, 0x4019)); } catch (...) { threw = true; }
+    Require(threw && *__error_nid_postfix() == 0);
 }
 
 static void CheckIntegerConversions() {
@@ -516,6 +543,7 @@ int main() {
     CheckLongDouble();
     CheckExactLibm();
     CheckAtanl();
+    CheckTanl();
     Require(scalbn_nid_postfix(0.75, -2) == 0.1875);
     Require(scalbnf_nid_postfix(0.75f, 4) == 12.f);
     Require(nextafterf_nid_postfix(1.f, 2.f) == 0x1.000002p0f && nextafterf_nid_postfix(1.f, 0.f) == 0x1.fffffep-1f);
