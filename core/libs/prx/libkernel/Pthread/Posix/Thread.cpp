@@ -20,6 +20,7 @@ int APS5_VABI scePthreadJoin(Pthread thread, void** retval);
 int APS5_VABI scePthreadRename(Pthread thread, const char* name);
 int APS5_VABI scePthreadGetname(Pthread thread, char* name);
 Pthread APS5_VABI scePthreadSelf();
+int APS5_VABI scePthreadGetthreadid(void);
 int APS5_VABI scePthreadCancel(Pthread thread);
 int APS5_VABI scePthreadSetcancelstate(int state, int* old_state);
 int APS5_VABI scePthreadSetcanceltype(int type, int* old_type);
@@ -152,6 +153,10 @@ void APS5_VABI pthread_set_name_np_nid_postfix(Pthread thread, const char* name)
 
 Pthread APS5_VABI pthread_self_nid_postfix(void) {
     return scePthreadSelf();
+}
+
+int APS5_VABI pthread_getthreadid_np_nid_postfix(void) {
+    return scePthreadGetthreadid();
 }
 
 int APS5_VABI pthread_equal_nid_postfix(Pthread first, Pthread second) {
