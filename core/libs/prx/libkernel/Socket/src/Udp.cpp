@@ -285,8 +285,15 @@ constexpr short GuestPollReadNormal = 0x40;
 constexpr short GuestPollAccepted = 0x1 | 0x2 | 0x4 | 0x8 | 0x10 | 0x20 | 0x40 | 0x80 | 0x100;
 constexpr std::uint32_t GuestPollSetSize = 1024;
 constexpr int HostPollSliceMilliseconds = 100;
-constexpr PollFlag RequestFlags[] = {
-    {0x1, POLLIN}, {0x2, POLLPRI}, {0x4, POLLOUT}, {0x40, POLLRDNORM}, {0x80, POLLRDBAND}, {0x100, POLLWRBAND}};
+#ifdef _WIN32
+constexpr short NativePollIn = POLLRDNORM;
+constexpr short NativePollPriority = POLLRDBAND;
+#else
+constexpr short NativePollIn = POLLIN;
+constexpr short NativePollPriority = POLLPRI;
+#endif
+constexpr PollFlag RequestFlags[] = {{GuestPollIn, NativePollIn}, {GuestPollPriority, NativePollPriority}, {GuestPollOut, POLLOUT},
+    {GuestPollReadNormal, POLLRDNORM}, {0x80, POLLRDBAND}, {0x100, POLLWRBAND}};
 constexpr PollFlag StatusFlags[] = {{GuestPollError, POLLERR}, {GuestPollHangUp, POLLHUP}, {GuestPollInvalid, POLLNVAL}};
 short HostPollRequest(short events) {
     short request = 0;
@@ -992,9 +999,6 @@ int APS5_VABI poll_nid_postfix(GuestPollDescriptor* descriptors, std::uint32_t c
             ++invalid;
             continue;
         }
-#ifdef _WIN32
-        if (entry.events & GuestPollPriority) throw std::runtime_error("poll: POLLPRI is not supported by WSAPoll");
-#endif
         NativePollDescriptor request{};
         request.fd = socket->value;
         for (const auto& flag : RequestFlags)
