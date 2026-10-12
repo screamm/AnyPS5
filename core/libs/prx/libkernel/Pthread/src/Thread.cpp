@@ -6,6 +6,7 @@
 #include "prx/libkernel/KernelErrors.hpp"
 #include "prx/libc/include/CpuTopology.hpp"
 #include <algorithm>
+#include <bit>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -748,6 +749,10 @@ int APS5_VABI scePthreadEqual(Pthread thread1, Pthread thread2) {
 
 KernelCpumask APS5_VABI sceKernelGetAvailableCpumask(void) {
     return DEFAULT_THREAD_AFFINITY;
+}
+
+int APS5_VABI sceKernelGetCpumode(void) {
+    throw std::runtime_error("sceKernelGetCpumode: the PS5 value is undocumented; the documented PS4 modes 0, 1 and 5 describe 6 or 7 CPUs, the available cpumask has " + std::to_string(std::popcount(DEFAULT_THREAD_AFFINITY)) + " CPUs");
 }
 
 int APS5_VABI scePthreadGetaffinity(Pthread thread, KernelCpumask* mask) {

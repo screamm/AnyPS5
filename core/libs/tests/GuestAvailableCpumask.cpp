@@ -1,12 +1,16 @@
 #include "SceTypes.hpp"
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <future>
+#include <stdexcept>
+#include <string>
 
 extern "C" {
 KernelCpumask APS5_VABI sceKernelGetAvailableCpumask(void);
+int APS5_VABI sceKernelGetCpumode(void);
 int APS5_VABI scePthreadCreate(Pthread* thread, const PthreadAttr* attr, PthreadEntry entry, void* arg, const char* name);
 int APS5_VABI scePthreadJoin(Pthread thread, void** retval);
 Pthread APS5_VABI scePthreadSelf();
@@ -112,6 +116,13 @@ int main() {
     Require(available != 0);
     Require((available >> PS5_LOGICAL_CPUS) == 0);
     Require(sceKernelGetAvailableCpumask() == available);
+    bool cpumodeThrew = false;
+    try {
+        sceKernelGetCpumode();
+    } catch (const std::runtime_error& error) {
+        cpumodeThrew = std::string(error.what()).ends_with("the available cpumask has " + std::to_string(std::popcount(available)) + " CPUs");
+    }
+    Require(cpumodeThrew);
 
     PthreadAttr attr = nullptr;
     Require(scePthreadAttrInit(&attr) == SCE_OK);
