@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include "general/VabiMacros.hpp"
+#include "prx/libc/include/GuestTime.hpp"
 
 namespace GuestLocale {
 
@@ -111,6 +112,28 @@ struct NumGetVtable {
     InputIterator (APS5_VABI *getPointer)(const Facet* self, InputIterator first, InputIterator last, IosBase* stream, std::int32_t* state, void** value);
 };
 
+struct TimeGetFacet {
+    Facet base;
+    const char* days;
+    const char* months;
+    const char* meridiems;
+    std::int32_t dateOrder;
+    std::uint32_t reserved;
+    void* narrowState;
+    void* wideState;
+};
+
+struct TimeGetFunctions {
+    FacetVtable facet;
+    std::int32_t (APS5_VABI *dateOrder)(const Facet* self);
+    InputIterator (APS5_VABI *getTime)(const Facet* self, InputIterator first, InputIterator last, IosBase* stream, std::int32_t* state, GuestTm* time);
+    InputIterator (APS5_VABI *getDate)(const Facet* self, InputIterator first, InputIterator last, IosBase* stream, std::int32_t* state, GuestTm* time);
+    InputIterator (APS5_VABI *getWeekday)(const Facet* self, InputIterator first, InputIterator last, IosBase* stream, std::int32_t* state, GuestTm* time);
+    InputIterator (APS5_VABI *getMonthName)(const Facet* self, InputIterator first, InputIterator last, IosBase* stream, std::int32_t* state, GuestTm* time);
+    InputIterator (APS5_VABI *getYear)(const Facet* self, InputIterator first, InputIterator last, IosBase* stream, std::int32_t* state, GuestTm* time);
+    InputIterator (APS5_VABI *get)(const Facet* self, InputIterator first, InputIterator last, IosBase* stream, std::int32_t* state, GuestTm* time, char specifier, char modifier);
+};
+
 static_assert(sizeof(Facet) == 0x10);
 static_assert(offsetof(Implementation, facets) == 0x10);
 static_assert(offsetof(Implementation, facetCount) == 0x18);
@@ -140,12 +163,20 @@ static_assert(sizeof(InputIterator) == 0x10);
 static_assert(offsetof(NumGetVtable, facet) == 0x10);
 static_assert(offsetof(NumGetVtable, getBool) == 0x30);
 static_assert(sizeof(NumGetVtable) == 0x88);
+static_assert(offsetof(TimeGetFacet, days) == 0x10);
+static_assert(offsetof(TimeGetFacet, dateOrder) == 0x28);
+static_assert(offsetof(TimeGetFacet, narrowState) == 0x30);
+static_assert(sizeof(TimeGetFacet) == 0x40);
+static_assert(offsetof(TimeGetFunctions, dateOrder) == 0x20);
+static_assert(offsetof(TimeGetFunctions, get) == 0x50);
 
 }
 
 extern "C" {
 void IosBaseAddStandard_nid_no_patch(GuestLocale::IosBase* stream);
 GuestLocale::NumGetVtable NumGetVtable_nid_no_patch();
+std::size_t TimeGetCategory_nid_no_patch(GuestLocale::Facet** facet, const GuestLocale::Implementation* const* locale);
+GuestLocale::InputIterator TimeGetFormat_nid_no_patch(const GuestLocale::Facet* self, GuestLocale::InputIterator first, GuestLocale::InputIterator last, GuestLocale::IosBase* stream, std::int32_t* state, GuestTm* time, const char* format, const char* formatEnd);
 }
 
 #endif

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cwchar>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -10,7 +11,10 @@
 #include "prx/libc/include/GuestLocale.hpp"
 
 extern "C" {
+void* APS5_VABI _Znwm_nid_postfix(std::size_t size);
 void APS5_VABI _ZdlPv_nid_postfix(void* pointer);
+std::mbstate_t* APS5_VABI _Getpmbstate_nid_postfix();
+std::mbstate_t* APS5_VABI _Getpwcstate_nid_postfix();
 extern const std::byte _ZTVN10__cxxabiv117__class_type_infoE_nid_postfix[];
 extern const std::byte _ZTVN10__cxxabiv120__si_class_type_infoE_nid_postfix[];
 }
@@ -32,6 +36,15 @@ constexpr std::int32_t BoolAlpha = 0x8000;
 constexpr std::size_t IntegerDigits = 32;
 constexpr std::size_t TypeInfoHeader = 2 * sizeof(void*);
 constexpr int RangeError = 34;
+constexpr std::size_t TimeCategory = 5;
+constexpr std::int32_t NoOrder = 0;
+constexpr std::int32_t DayMonthYear = 1;
+constexpr std::int32_t MonthDayYear = 2;
+constexpr std::int32_t YearMonthDay = 3;
+constexpr std::int32_t YearDayMonth = 4;
+constexpr char Days[] = ":Sun:Sunday:Mon:Monday:Tue:Tuesday:Wed:Wednesday:Thu:Thursday:Fri:Friday:Sat:Saturday";
+constexpr char Months[] = ":Jan:January:Feb:February:Mar:March:Apr:April:May:May:Jun:June:Jul:July:Aug:August:Sep:September:Oct:October:Nov:November:Dec:December";
+constexpr char Meridiems[] = ":AM:am:PM:pm";
 
 struct TypeRecord {
     const void* vtable;
@@ -42,6 +55,8 @@ struct TypeRecord {
 const TypeRecord g_facetBaseType{_ZTVN10__cxxabiv117__class_type_infoE_nid_postfix + TypeInfoHeader, "St11_Facet_base", nullptr};
 const TypeRecord g_facetType{_ZTVN10__cxxabiv120__si_class_type_infoE_nid_postfix + TypeInfoHeader, "NSt6locale5facetE", &g_facetBaseType};
 const TypeRecord g_numGetType{_ZTVN10__cxxabiv120__si_class_type_infoE_nid_postfix + TypeInfoHeader, "St7num_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE", &g_facetType};
+const TypeRecord g_timeBaseType{_ZTVN10__cxxabiv120__si_class_type_infoE_nid_postfix + TypeInfoHeader, "St9time_base", &g_facetType};
+const TypeRecord g_timeGetType{_ZTVN10__cxxabiv120__si_class_type_infoE_nid_postfix + TypeInfoHeader, "St8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE", &g_timeBaseType};
 
 std::int32_t Available(const StreamBuffer* buffer, const char* next) {
     return static_cast<std::int32_t>(static_cast<std::uint32_t>(reinterpret_cast<std::uintptr_t>(*buffer->readEnd) - reinterpret_cast<std::uintptr_t>(next)));
@@ -97,15 +112,25 @@ bool IsSpace(char character) {
     return character == ' ' || (character >= '\t' && character <= '\r');
 }
 
+bool IsDigit(char character) {
+    return character >= '0' && character <= '9';
+}
+
+void SkipSpaces(InputIterator& first, InputIterator& last) {
+    while (!Same(first, last) && IsSpace(Current(first))) Advance(first);
+}
+
 char Lower(char character) {
     return character >= 'A' && character <= 'Z' ? static_cast<char>(character - 'A' + 'a') : character;
 }
 
+bool IsClassic(const GuestLocale::Implementation* const* locale) {
+    return locale != nullptr && *locale != nullptr && (*locale)->name != nullptr && std::strcmp((*locale)->name, "C") == 0;
+}
+
 void RequireStream(const IosBase* stream, const std::int32_t* state, const void* value, const char* function) {
     if (stream == nullptr || state == nullptr || value == nullptr) throw std::invalid_argument(std::string(function) + ": null argument");
-    if (stream->locale == nullptr || *stream->locale == nullptr || (*stream->locale)->name == nullptr || std::strcmp((*stream->locale)->name, "C") != 0) {
-        throw std::invalid_argument(std::string(function) + ": only the C locale is supported");
-    }
+    if (!IsClassic(stream->locale)) throw std::invalid_argument(std::string(function) + ": only the C locale is supported");
 }
 
 std::uint64_t ToUnsigned(const char* text, const char** end, int base, int* error) {
@@ -294,10 +319,10 @@ InputIterator GetUnsigned(InputIterator first, InputIterator last, IosBase* stre
     return first;
 }
 
-void APS5_VABI DestroyNumGet(Facet*) {}
+void APS5_VABI DestroyFacet(Facet*) {}
 
-void APS5_VABI DeleteNumGet(Facet* self) {
-    if (self == nullptr) throw std::invalid_argument("num_get delete: null facet");
+void APS5_VABI DeleteFacet(Facet* self) {
+    if (self == nullptr) throw std::invalid_argument("facet delete: null facet");
     _ZdlPv_nid_postfix(self);
 }
 
@@ -377,9 +402,283 @@ InputIterator APS5_VABI NumGetPointer(const Facet*, InputIterator first, InputIt
 }
 
 const GuestLocale::NumGetVtable g_numGetVtable{
-    0, &g_numGetType, {DestroyNumGet, DeleteNumGet, RetainFacet, ReleaseFacet},
+    0, &g_numGetType, {DestroyFacet, DeleteFacet, RetainFacet, ReleaseFacet},
     NumGetBool, NumGetUnsignedShort, NumGetUnsignedInt, NumGetLong, NumGetUnsignedLong, NumGetLong, NumGetUnsignedLong,
     NumGetFloat, NumGetDouble, NumGetLongDouble, NumGetPointer};
+
+const GuestLocale::TimeGetFunctions& TimeVirtuals(const Facet* self) {
+    return *reinterpret_cast<const GuestLocale::TimeGetFunctions*>(self->vtable);
+}
+
+const GuestLocale::TimeGetFacet* TimeFacet(const Facet* self) {
+    if (self == nullptr) throw std::invalid_argument("time_get: null facet");
+    return reinterpret_cast<const GuestLocale::TimeGetFacet*>(self);
+}
+
+std::int32_t GetDigits(InputIterator& first, InputIterator& last, int low, int high, int* value) {
+    char field[IntegerDigits];
+    char* cursor = field;
+    if (!Same(first, last)) {
+        if (Current(first) == '+') {
+            *cursor++ = '+';
+            Advance(first);
+        } else if (Current(first) == '-') {
+            *cursor++ = '-';
+            Advance(first);
+        }
+    }
+    bool seenDigit = false;
+    for (; !Same(first, last) && Current(first) == '0'; Advance(first)) seenDigit = true;
+    if (seenDigit) *cursor++ = '0';
+    for (char* const limit = field + IntegerDigits - 1; !Same(first, last) && IsDigit(Current(first)); seenDigit = true, Advance(first)) {
+        *cursor = Current(first);
+        if (cursor < limit) ++cursor;
+    }
+    if (!seenDigit) cursor = field;
+    *cursor = '\0';
+    const char* end = nullptr;
+    int error = 0;
+    const std::int64_t answer = ToSigned(field, &end, 10, &error);
+    std::int32_t state = 0;
+    if (Same(first, last)) state |= EofBit;
+    if (end == field || error != 0 || answer < low || answer > high) state |= FailBit;
+    else *value = static_cast<int>(answer);
+    return state;
+}
+
+void SkipDateSeparator(InputIterator& first, InputIterator& last) {
+    SkipSpaces(first, last);
+    if (!Same(first, last)) {
+        const char separator = Current(first);
+        if (separator == ':' || separator == ',' || separator == '/') Advance(first);
+    }
+    SkipSpaces(first, last);
+}
+
+InputIterator GetFormat(const Facet* self, InputIterator first, InputIterator last, IosBase* stream, std::int32_t* state, GuestTm* time, const char* format) {
+    const auto& virtuals = TimeVirtuals(self);
+    for (; *format != '\0'; ++format) {
+        if (*format == '%') {
+            ++format;
+            first = virtuals.get(self, first, last, stream, state, time, *format, '\0');
+        } else if (*format == ' ') {
+            SkipSpaces(first, last);
+        } else if (Current(first) != *format) {
+            *state |= FailBit;
+            break;
+        } else {
+            Advance(first);
+        }
+    }
+    MarkEnd(first, last, state);
+    return first;
+}
+
+std::int32_t APS5_VABI TimeGetDateOrder(const Facet* self) {
+    return TimeFacet(self)->dateOrder;
+}
+
+InputIterator APS5_VABI TimeGetTime(const Facet*, InputIterator first, InputIterator last, IosBase* stream, std::int32_t* state, GuestTm* time) {
+    RequireStream(stream, state, time, "time_get::do_get_time");
+    *state |= GetDigits(first, last, 0, 23, &time->tm_hour);
+    if (*state != 0 || Current(first) != ':') {
+        *state |= FailBit;
+        return first;
+    }
+    Advance(first);
+    *state |= GetDigits(first, last, 0, 59, &time->tm_min);
+    if (*state != 0 || Current(first) != ':') {
+        *state |= FailBit;
+        return first;
+    }
+    Advance(first);
+    *state |= GetDigits(first, last, 0, 60, &time->tm_sec);
+    return first;
+}
+
+InputIterator APS5_VABI TimeGetDate(const Facet* self, InputIterator first, InputIterator last, IosBase* stream, std::int32_t* state, GuestTm* time) {
+    RequireStream(stream, state, time, "time_get::do_get_date");
+    const auto& virtuals = TimeVirtuals(self);
+    std::int32_t order = virtuals.dateOrder(self);
+    if (order == NoOrder) order = MonthDayYear;
+    if (!Same(first, last)) {
+        if (!IsDigit(Current(first))) {
+            first = virtuals.getMonthName(self, first, last, stream, state, time);
+            order = MonthDayYear;
+        } else if (order == MonthDayYear) {
+            *state |= GetDigits(first, last, 1, 12, &time->tm_mon);
+            --time->tm_mon;
+        } else if (order == DayMonthYear) {
+            *state |= GetDigits(first, last, 1, 31, &time->tm_mday);
+        } else {
+            first = virtuals.getYear(self, first, last, stream, state, time);
+        }
+    }
+    SkipDateSeparator(first, last);
+    if (!Same(first, last)) {
+        if (!IsDigit(Current(first))) {
+            if (order == MonthDayYear) {
+                *state |= FailBit;
+            } else {
+                first = virtuals.getMonthName(self, first, last, stream, state, time);
+                if (order == YearDayMonth) order = YearMonthDay;
+            }
+        } else if (order == DayMonthYear || order == YearMonthDay) {
+            *state |= GetDigits(first, last, 1, 12, &time->tm_mon);
+            --time->tm_mon;
+        } else {
+            *state |= GetDigits(first, last, 1, 31, &time->tm_mday);
+        }
+    }
+    SkipDateSeparator(first, last);
+    if (Same(first, last)) {
+        *state |= FailBit;
+    } else if (!IsDigit(Current(first))) {
+        if (order != YearDayMonth) *state |= FailBit;
+        else first = virtuals.getMonthName(self, first, last, stream, state, time);
+    } else if (order == YearDayMonth) {
+        *state |= GetDigits(first, last, 1, 12, &time->tm_mon);
+        --time->tm_mon;
+    } else if (order == YearMonthDay) {
+        *state |= GetDigits(first, last, 1, 31, &time->tm_mday);
+    } else {
+        first = virtuals.getYear(self, first, last, stream, state, time);
+    }
+    MarkEnd(first, last, state);
+    return first;
+}
+
+InputIterator APS5_VABI TimeGetWeekday(const Facet* self, InputIterator first, InputIterator last, IosBase*, std::int32_t* state, GuestTm* time) {
+    if (state == nullptr || time == nullptr) throw std::invalid_argument("time_get::do_get_weekday: null argument");
+    const int number = MatchName(first, last, 0, TimeFacet(self)->days);
+    if (number < 0) *state |= FailBit;
+    else time->tm_wday = number >> 1;
+    return first;
+}
+
+InputIterator APS5_VABI TimeGetMonthName(const Facet* self, InputIterator first, InputIterator last, IosBase*, std::int32_t* state, GuestTm* time) {
+    if (state == nullptr || time == nullptr) throw std::invalid_argument("time_get::do_get_monthname: null argument");
+    const int number = MatchName(first, last, 0, TimeFacet(self)->months);
+    if (number < 0) *state |= FailBit;
+    else time->tm_mon = number >> 1;
+    return first;
+}
+
+InputIterator APS5_VABI TimeGetYear(const Facet*, InputIterator first, InputIterator last, IosBase* stream, std::int32_t* state, GuestTm* time) {
+    RequireStream(stream, state, time, "time_get::do_get_year");
+    int answer = 0;
+    const std::int32_t result = GetDigits(first, last, 0, 9999, &answer);
+    *state |= result;
+    if ((result & FailBit) == 0) time->tm_year = answer < 69 ? answer + 100 : answer < 100 ? answer : answer - 1900;
+    return first;
+}
+
+InputIterator APS5_VABI TimeGetField(const Facet* self, InputIterator first, InputIterator last, IosBase* stream, std::int32_t* state, GuestTm* time, char specifier, char) {
+    RequireStream(stream, state, time, "time_get::do_get");
+    const auto& virtuals = TimeVirtuals(self);
+    int answer = 0;
+    *state = 0;
+    switch (specifier) {
+    case 'a':
+    case 'A':
+        first = virtuals.getWeekday(self, first, last, stream, state, time);
+        break;
+    case 'b':
+    case 'B':
+    case 'h':
+        first = virtuals.getMonthName(self, first, last, stream, state, time);
+        break;
+    case 'c':
+        first = GetFormat(self, first, last, stream, state, time, "%a %b %d %H : %M : %S %Y");
+        break;
+    case 'C':
+        *state |= GetDigits(first, last, 0, 99, &answer);
+        if ((*state & FailBit) == 0) time->tm_year = answer * 100 - 1900;
+        break;
+    case 'd':
+    case 'e':
+        *state |= GetDigits(first, last, 1, 31, &time->tm_mday);
+        break;
+    case 'D':
+        first = GetFormat(self, first, last, stream, state, time, "%m / %d / %y");
+        break;
+    case 'H':
+        *state |= GetDigits(first, last, 0, 23, &time->tm_hour);
+        break;
+    case 'I':
+        *state |= GetDigits(first, last, 1, 12, &answer);
+        if ((*state & FailBit) == 0) time->tm_hour = answer == 12 ? 0 : answer;
+        break;
+    case 'j':
+        *state |= GetDigits(first, last, 1, 366, &time->tm_yday);
+        break;
+    case 'm':
+        *state |= GetDigits(first, last, 1, 12, &answer);
+        if ((*state & FailBit) == 0) time->tm_mon = answer - 1;
+        break;
+    case 'M':
+        *state |= GetDigits(first, last, 0, 59, &time->tm_min);
+        break;
+    case 'n':
+    case 't':
+        first = GetFormat(self, first, last, stream, state, time, " ");
+        break;
+    case 'p':
+        answer = MatchName(first, last, 0, Meridiems);
+        if (answer < 0) *state |= FailBit;
+        else if (answer > 1) time->tm_hour += 12;
+        break;
+    case 'r':
+        first = GetFormat(self, first, last, stream, state, time, "%I : %M : %S %p");
+        break;
+    case 'R':
+        first = GetFormat(self, first, last, stream, state, time, "%H : %M");
+        break;
+    case 'S':
+        *state |= GetDigits(first, last, 0, 60, &time->tm_sec);
+        break;
+    case 'T':
+    case 'X':
+        first = GetFormat(self, first, last, stream, state, time, "%H : %M : %S");
+        break;
+    case 'U':
+    case 'W':
+        *state |= GetDigits(first, last, 0, 53, &time->tm_yday);
+        break;
+    case 'w':
+        *state |= GetDigits(first, last, 0, 6, &time->tm_wday);
+        break;
+    case 'x':
+        first = GetFormat(self, first, last, stream, state, time, "%d / %m / %y");
+        break;
+    case 'y':
+        *state |= GetDigits(first, last, 0, 99, &answer);
+        if ((*state & FailBit) == 0) time->tm_year = answer < 69 ? answer + 100 : answer;
+        break;
+    case 'Y':
+        *state |= GetDigits(first, last, 0, 9999, &answer);
+        if ((*state & FailBit) == 0) time->tm_year = answer - 1900;
+        break;
+    case '%':
+        if (!Same(first, last) && Current(first) == '%') Advance(first);
+        break;
+    default:
+        *state = FailBit;
+        break;
+    }
+    MarkEnd(first, last, state);
+    return first;
+}
+
+struct TimeGetVtable {
+    std::int64_t offset;
+    const void* type;
+    GuestLocale::TimeGetFunctions functions;
+};
+
+const TimeGetVtable g_timeGetVtable{
+    0, &g_timeGetType,
+    {{DestroyFacet, DeleteFacet, RetainFacet, ReleaseFacet}, TimeGetDateOrder, TimeGetTime, TimeGetDate, TimeGetWeekday, TimeGetMonthName, TimeGetYear, TimeGetField}};
 
 }
 
@@ -387,6 +686,60 @@ extern "C" {
 
 GuestLocale::NumGetVtable NumGetVtable_nid_no_patch() {
     return g_numGetVtable;
+}
+
+std::size_t TimeGetCategory_nid_no_patch(Facet** facet, const GuestLocale::Implementation* const* locale) {
+    if (facet != nullptr && *facet == nullptr) {
+        if (!IsClassic(locale)) throw std::invalid_argument("time_get::_Getcat: only the C locale is supported");
+        auto* created = static_cast<GuestLocale::TimeGetFacet*>(_Znwm_nid_postfix(sizeof(GuestLocale::TimeGetFacet)));
+        *created = {{&g_timeGetVtable.functions.facet, 0, 0}, Days, Months, Meridiems, MonthDayYear, 0, _Getpmbstate_nid_postfix(), _Getpwcstate_nid_postfix()};
+        *facet = &created->base;
+    }
+    return TimeCategory;
+}
+
+InputIterator TimeGetFormat_nid_no_patch(const Facet* self, InputIterator first, InputIterator last, IosBase* stream, std::int32_t* state, GuestTm* time, const char* format, const char* formatEnd) {
+    if (self == nullptr || format == nullptr || formatEnd < format) throw std::invalid_argument("time_get::get: invalid facet or format range");
+    RequireStream(stream, state, time, "time_get::get");
+    const auto& virtuals = TimeVirtuals(self);
+    *state = 0;
+    for (; format != formatEnd; ++format) {
+        if (*format != '%') {
+            if (IsSpace(*format)) {
+                SkipSpaces(first, last);
+            } else if (Current(first) != *format) {
+                *state |= FailBit;
+                break;
+            } else {
+                Advance(first);
+            }
+        } else if (++format == formatEnd) {
+            if (Current(first) != format[-1]) *state |= FailBit;
+            else Advance(first);
+            break;
+        } else {
+            char specifier = *format;
+            char modifier = '\0';
+            const char percent = format[-1];
+            if (specifier == 'E' || specifier == 'O' || specifier == 'Q' || specifier == '#') {
+                if (++format == formatEnd) {
+                    bool matched = Current(first) == percent;
+                    if (matched) {
+                        Advance(first);
+                        matched = !Same(first, last) && Current(first) == specifier;
+                    }
+                    if (matched) Advance(first);
+                    else *state |= FailBit;
+                    break;
+                }
+                modifier = specifier;
+                specifier = *format;
+            }
+            first = virtuals.get(self, first, last, stream, state, time, specifier, modifier);
+        }
+    }
+    MarkEnd(first, last, state);
+    return first;
 }
 
 }

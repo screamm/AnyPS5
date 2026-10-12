@@ -20,6 +20,9 @@ extern const std::byte _ZTVN10__cxxabiv117__class_type_infoE_nid_postfix[];
 extern const std::byte _ZTVN10__cxxabiv120__si_class_type_infoE_nid_postfix[];
 extern std::uint64_t _ZNSt7num_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE2idE_nid_postfix;
 extern GuestLocale::NumGetVtable _ZTVSt7num_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE_nid_postfix;
+extern std::uint64_t _ZNSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE2idE_nid_postfix;
+std::size_t APS5_VABI _ZNSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE7_GetcatEPPKNSt6locale5facetEPKS5__nid_postfix(GuestLocale::Facet** facet, const GuestLocale::Implementation* const* locale);
+GuestLocale::InputIterator APS5_VABI _ZNKSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE3getES3_S3_RSt8ios_baseRNSt5_IosbIiE8_IostateEP2tmPKcSE__nid_postfix(const GuestLocale::Facet* self, GuestLocale::InputIterator first, GuestLocale::InputIterator last, GuestLocale::IosBase* stream, std::int32_t* state, GuestTm* time, const char* format, const char* formatEnd);
 }
 
 using GuestLocale::InputIterator;
@@ -308,6 +311,201 @@ static void CheckUnsupportedNumbers() {
     Require(Consumed(other.buffer) == 0 && Consumed(missing.buffer) == 0);
 }
 
+static GuestLocale::Facet* MakeTimeFacet() {
+    GuestLocale::Facet* facet = nullptr;
+    Require(_ZNSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE7_GetcatEPPKNSt6locale5facetEPKS5__nid_postfix(&facet, &_ZSt21_sceLibcClassicLocale_nid_postfix) == 5);
+    Require(facet != nullptr);
+    return facet;
+}
+
+static const GuestLocale::TimeGetFunctions& TimeTable(const GuestLocale::Facet* facet) {
+    return *reinterpret_cast<const GuestLocale::TimeGetFunctions*>(facet->vtable);
+}
+
+struct TimeCase {
+    GuestLocale::IosBase stream = MakeStream();
+    TestBuffer buffer;
+    GuestTm time{};
+    std::int32_t state = 0;
+    InputIterator rest{};
+
+    explicit TimeCase(const std::string& text) {
+        Fill(buffer, text, true);
+        time.tm_year = -1;
+    }
+
+    InputIterator First() {
+        return {&buffer.base, false, 0};
+    }
+
+    void Get(const GuestLocale::Facet* facet, const std::string& format) {
+        rest = _ZNKSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE3getES3_S3_RSt8ios_baseRNSt5_IosbIiE8_IostateEP2tmPKcSE__nid_postfix(facet, First(), InputIterator{}, &stream, &state, &time, format.data(), format.data() + format.size());
+    }
+};
+
+static void CheckTimeCategory() {
+    Require(_ZNSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE2idE_nid_postfix == 0);
+    const auto allocations = g_allocations;
+    Require(_ZNSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE7_GetcatEPPKNSt6locale5facetEPKS5__nid_postfix(nullptr, nullptr) == 5);
+    GuestLocale::Facet existing{};
+    GuestLocale::Facet* present = &existing;
+    Require(_ZNSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE7_GetcatEPPKNSt6locale5facetEPKS5__nid_postfix(&present, nullptr) == 5 && present == &existing);
+    Require(g_allocations == allocations);
+
+    auto* facet = MakeTimeFacet();
+    Require(g_allocations == allocations + 1);
+    const auto* time = reinterpret_cast<const GuestLocale::TimeGetFacet*>(facet);
+    Require(facet->references == 0);
+    Require(std::strcmp(time->days, ":Sun:Sunday:Mon:Monday:Tue:Tuesday:Wed:Wednesday:Thu:Thursday:Fri:Friday:Sat:Saturday") == 0);
+    Require(std::strncmp(time->months, ":Jan:January:Feb:February:", 26) == 0 && std::strcmp(time->meridiems, ":AM:am:PM:pm") == 0);
+    Require(time->dateOrder == 2 && TimeTable(facet).dateOrder(facet) == 2);
+    const auto* header = reinterpret_cast<const void* const*>(facet->vtable);
+    Require(header[-2] == nullptr);
+    const auto* type = static_cast<const TypeRecord*>(header[-1]);
+    Require(std::strcmp(type->name, "St8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE") == 0 && type->vtable == _ZTVN10__cxxabiv120__si_class_type_infoE_nid_postfix + 16);
+    Require(std::strcmp(type->base->name, "St9time_base") == 0 && std::strcmp(type->base->base->name, "NSt6locale5facetE") == 0);
+
+    GuestLocale::Implementation named = *_ZSt21_sceLibcClassicLocale_nid_postfix;
+    named.name = "de_DE";
+    const GuestLocale::Implementation* namedPointer = &named;
+    GuestLocale::Facet* missing = nullptr;
+    Require(Throws([&] { _ZNSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE7_GetcatEPPKNSt6locale5facetEPKS5__nid_postfix(&missing, &namedPointer); }));
+    Require(missing == nullptr && g_allocations == allocations + 1);
+
+    facet->vtable->retain(facet);
+    Require(facet->vtable->release(facet) == facet);
+    const auto frees = g_frees;
+    facet->vtable->destroy(facet);
+    facet->vtable->deleteObject(facet);
+    Require(g_frees == frees + 1);
+}
+
+static void CheckTimeFormats() {
+    auto* facet = MakeTimeFacet();
+    TimeCase full("2024-03-15 13:45:30");
+    full.Get(facet, "%Y-%m-%d %H:%M:%S");
+    Require(full.state == 1 && full.time.tm_year == 124 && full.time.tm_mon == 2 && full.time.tm_mday == 15);
+    Require(full.time.tm_hour == 13 && full.time.tm_min == 45 && full.time.tm_sec == 30);
+    TimeCase names("Fri  Mar 5");
+    names.Get(facet, "%a %b %e");
+    Require(names.state == 1 && names.time.tm_wday == 5 && names.time.tm_mon == 2 && names.time.tm_mday == 5);
+    TimeCase longNames("Wednesday, December");
+    longNames.Get(facet, "%A, %B!");
+    Require(longNames.state == 3 && longNames.time.tm_wday == 3 && longNames.time.tm_mon == 11);
+    TimeCase composite("Fri Mar 15 13:45:30 2024");
+    composite.Get(facet, "%c");
+    Require(composite.state == 1 && composite.time.tm_wday == 5 && composite.time.tm_year == 124 && composite.time.tm_sec == 30);
+    TimeCase years("99 05 1969 69");
+    years.Get(facet, "%y");
+    Require(years.time.tm_year == 99);
+    years.Get(facet, " %y");
+    Require(years.time.tm_year == 105);
+    TimeCase fullYear("69");
+    fullYear.Get(facet, "%Y");
+    Require(fullYear.state == 1 && fullYear.time.tm_year == -1831);
+    TimeCase century("20");
+    century.Get(facet, "%C");
+    Require(century.time.tm_year == 100);
+    TimeCase afternoon("12:30 PM");
+    afternoon.Get(facet, "%I:%M %p");
+    Require(afternoon.state == 1 && afternoon.time.tm_hour == 12 && afternoon.time.tm_min == 30);
+    TimeCase morning("12:05:09 am");
+    morning.Get(facet, "%r");
+    Require(morning.state == 1 && morning.time.tm_hour == 0 && morning.time.tm_sec == 9);
+    TimeCase percent("10%x");
+    percent.Get(facet, "%H%%x");
+    Require(percent.state == 1 && percent.time.tm_hour == 10);
+    TimeCase trailing("10%");
+    trailing.Get(facet, "%H%");
+    Require(trailing.state == 1 && trailing.time.tm_hour == 10);
+    TimeCase modified("2001");
+    modified.Get(facet, "%EY");
+    Require(modified.state == 1 && modified.time.tm_year == 101);
+    TimeCase modifierLiteral("%E");
+    modifierLiteral.Get(facet, "%E");
+    Require(modifierLiteral.state == 1);
+    TimeCase days("366 060");
+    days.Get(facet, "%j %S");
+    Require(days.state == 1 && days.time.tm_yday == 366 && days.time.tm_sec == 60);
+
+    TimeCase hour("25");
+    hour.Get(facet, "%H");
+    Require(hour.state == 3 && hour.time.tm_hour == 0);
+    TimeCase unknown("1");
+    unknown.Get(facet, "%Z");
+    Require(unknown.state == 2 && Consumed(unknown.buffer) == 0);
+    TimeCase literal("10-20");
+    literal.Get(facet, "%H:%M");
+    Require(literal.state == 2 && literal.time.tm_hour == 10 && Consumed(literal.buffer) == 2);
+    TimeCase weekday("Xyz");
+    weekday.Get(facet, "%a");
+    Require(weekday.state == 2);
+
+    GuestLocale::Implementation named = *_ZSt21_sceLibcClassicLocale_nid_postfix;
+    named.name = "de_DE";
+    GuestLocale::Implementation* namedPointer = &named;
+    TimeCase other("10");
+    other.stream.locale = &namedPointer;
+    Require(Throws([&] { other.Get(facet, "%H"); }));
+    Require(Throws([&] { other.Get(nullptr, "%H"); }));
+    facet->vtable->deleteObject(facet);
+}
+
+static void CheckTimeFields() {
+    auto* facet = MakeTimeFacet();
+    const auto& table = TimeTable(facet);
+    TimeCase clock("13:45:60x");
+    clock.rest = table.getTime(facet, clock.First(), InputIterator{}, &clock.stream, &clock.state, &clock.time);
+    Require(clock.state == 0 && clock.time.tm_hour == 13 && clock.time.tm_min == 45 && clock.time.tm_sec == 60 && Consumed(clock.buffer) == 8);
+    TimeCase badClock("13-45");
+    badClock.rest = table.getTime(facet, badClock.First(), InputIterator{}, &badClock.stream, &badClock.state, &badClock.time);
+    Require(badClock.state == 2 && badClock.time.tm_hour == 13 && Consumed(badClock.buffer) == 2);
+    TimeCase date("03/15/2024");
+    date.rest = table.getDate(facet, date.First(), InputIterator{}, &date.stream, &date.state, &date.time);
+    Require(date.state == 1 && date.time.tm_mon == 2 && date.time.tm_mday == 15 && date.time.tm_year == 124);
+    TimeCase namedDate("Mar 15, 68");
+    namedDate.rest = table.getDate(facet, namedDate.First(), InputIterator{}, &namedDate.stream, &namedDate.state, &namedDate.time);
+    Require(namedDate.state == 1 && namedDate.time.tm_mon == 2 && namedDate.time.tm_mday == 15 && namedDate.time.tm_year == 168);
+    TimeCase shortDate("03/15");
+    shortDate.rest = table.getDate(facet, shortDate.First(), InputIterator{}, &shortDate.stream, &shortDate.state, &shortDate.time);
+    Require(shortDate.state == 3);
+    TimeCase weekday("Saturday");
+    weekday.rest = table.getWeekday(facet, weekday.First(), InputIterator{}, &weekday.stream, &weekday.state, &weekday.time);
+    Require(weekday.state == 0 && weekday.time.tm_wday == 6 && Consumed(weekday.buffer) == 8);
+    TimeCase month("Decem");
+    month.rest = table.getMonthName(facet, month.First(), InputIterator{}, &month.stream, &month.state, &month.time);
+    Require(month.state == 2);
+    TimeCase year("2024");
+    year.rest = table.getYear(facet, year.First(), InputIterator{}, &year.stream, &year.state, &year.time);
+    Require(year.state == 1 && year.time.tm_year == 124);
+    TimeCase pivot("68");
+    pivot.rest = table.getYear(facet, pivot.First(), InputIterator{}, &pivot.stream, &pivot.state, &pivot.time);
+    Require(pivot.time.tm_year == 168);
+    facet->vtable->deleteObject(facet);
+}
+
+static int g_derivedCalls = 0;
+
+static InputIterator APS5_VABI DerivedGet(const GuestLocale::Facet*, InputIterator first, InputIterator, GuestLocale::IosBase*, std::int32_t* state, GuestTm* time, char specifier, char modifier) {
+    ++g_derivedCalls;
+    time->tm_wday = specifier;
+    time->tm_yday = modifier;
+    *state = 0;
+    return first;
+}
+
+static void CheckDerivedTimeFacet() {
+    auto* facet = MakeTimeFacet();
+    GuestLocale::TimeGetFunctions functions = TimeTable(facet);
+    functions.get = DerivedGet;
+    GuestLocale::TimeGetFacet derived = *reinterpret_cast<const GuestLocale::TimeGetFacet*>(facet);
+    derived.base.vtable = &functions.facet;
+    TimeCase item("");
+    item.Get(&derived.base, "%Oq");
+    Require(g_derivedCalls == 1 && item.time.tm_wday == 'q' && item.time.tm_yday == 'O' && item.state == 1);
+    facet->vtable->deleteObject(facet);
+}
+
 int main() {
     const std::array<void*, 10> api{reinterpret_cast<void*>(&Allocate), reinterpret_cast<void*>(&Release), reinterpret_cast<void*>(&AllocateZeroed), reinterpret_cast<void*>(&Reallocate), reinterpret_cast<void*>(&Align), reinterpret_cast<void*>(&Realign), reinterpret_cast<void*>(&PosixAlign)};
     ApplicationHeapRegister_nid_no_patch(api.data());
@@ -317,5 +515,9 @@ int main() {
     CheckUnsignedNumbers();
     CheckBooleans();
     CheckUnsupportedNumbers();
+    CheckTimeCategory();
+    CheckTimeFormats();
+    CheckTimeFields();
+    CheckDerivedTimeFacet();
     std::puts("Guest Ampr locale checks passed");
 }

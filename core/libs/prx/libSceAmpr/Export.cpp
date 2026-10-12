@@ -913,24 +913,19 @@ int APS5_VABI _ZTVN10__cxxabiv120__function_type_infoE_nid_postfix(void) {
 
 GuestLocale::NumGetVtable _ZTVSt7num_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE_nid_postfix = NumGetVtable_nid_no_patch();
 
-int APS5_VABI _ZNKSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE3getES3_S3_RSt8ios_baseRNSt5_IosbIiE8_IostateEP2tmPKcSE__nid_postfix(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+GuestLocale::InputIterator APS5_VABI _ZNKSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE3getES3_S3_RSt8ios_baseRNSt5_IosbIiE8_IostateEP2tmPKcSE__nid_postfix(const GuestLocale::Facet* self, GuestLocale::InputIterator first, GuestLocale::InputIterator last, GuestLocale::IosBase* stream, std::int32_t* state, GuestTm* time, const char* format, const char* formatEnd) {
+    return TimeGetFormat_nid_no_patch(self, first, last, stream, state, time, format, formatEnd);
 }
 
-int APS5_VABI _ZNSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE2idE_nid_postfix(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
+std::uint64_t _ZNSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE2idE_nid_postfix = 0;
 
 int APS5_VABI _ZTVN10__cxxabiv119__pointer_type_infoE_nid_postfix(void) {
     NotImplemented_nid_no_patch(__func__);
     return 0;
 }
 
-int APS5_VABI _ZNSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE7_GetcatEPPKNSt6locale5facetEPKS5__nid_postfix(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::size_t APS5_VABI _ZNSt8time_getIcSt19istreambuf_iteratorIcSt11char_traitsIcEEE7_GetcatEPPKNSt6locale5facetEPKS5__nid_postfix(GuestLocale::Facet** facet, const GuestLocale::Implementation* const* locale) {
+    return TimeGetCategory_nid_no_patch(facet, locale);
 }
 
 void APS5_VABI _Lock_shared_ptr_spin_lock_nid_postfix(void) {
