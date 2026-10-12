@@ -2,10 +2,13 @@
 #include "prx/libkernel/Pthread/include/Pthread.hpp"
 #include <array>
 #include <bit>
+#include <cstdint>
 #include <cstdlib>
+#include <stdexcept>
 
 extern "C" {
 int APS5_VABI sceKernelGetCurrentCpu(void);
+std::int64_t APS5_VABI sceKernelGetCpuFrequency(void);
 KernelCpumask APS5_VABI sceKernelGetAvailableCpumask(void);
 Pthread APS5_VABI scePthreadSelf();
 int APS5_VABI scePthreadCreate(Pthread* thread, const PthreadAttr* attr, PthreadEntry entry, void* arg, const char* name);
@@ -63,4 +66,12 @@ int main() {
         Require(scePthreadJoin(thread, nullptr) == SCE_OK);
         Require(run.inside);
     }
+
+    bool frequencyThrew = false;
+    try {
+        sceKernelGetCpuFrequency();
+    } catch (const std::runtime_error&) {
+        frequencyThrew = true;
+    }
+    Require(frequencyThrew);
 }

@@ -333,6 +333,10 @@ int APS5_VABI sceKernelGetCurrentCpu(void) {
     return GuestCpuFromHost(index, scePthreadSelf()->affinity.load(std::memory_order_relaxed));
 }
 
+std::int64_t APS5_VABI sceKernelGetCpuFrequency(void) {
+    throw std::runtime_error("sceKernelGetCpuFrequency: the CPU frequency in Hz the console reports is undocumented");
+}
+
 std::uint64_t APS5_VABI sceKernelGetGPI(void) {
     return gpoBits.load(std::memory_order_relaxed);
 }
